@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --background: #0a0118;
+    --foreground: #ededed;
+
+    /* Premium color palette */
+    --primary-purple: #8e2de2;
+    --primary-blue: #4a00e0;
+    --accent-purple: #a855f7;
+    --glow-purple: rgba(142, 45, 226, 0.6);
+
+    /* Glassmorphism */
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+
+    /* Premium shadows */
+    --shadow-glow: 0 0 20px rgba(142, 45, 226, 0.4);
+    --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* Glassmorphism utility */
+.glass-effect {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+}
+
+/* Premium gradient backgrounds */
+.gradient-purple {
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-purple) 100%);
+}
+
+/* Glow effects */
+.glow-purple {
+    box-shadow: var(--shadow-glow);
+}
+
+/* Remove focus outline from all inputs */
+input:focus,
+textarea:focus {
+    outline: none !important;
+    border-color: inherit;
+}

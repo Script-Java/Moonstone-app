@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // User audio: only owner can read/write
+    // Path: audio/{uid}/{storyId}.wav (NOT audio/users/{uid}/...)
+    match /audio/{uid}/{allPaths=**} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == uid;
+    }
+    
+    // Voice previews: public read, no public write
+    // Path: previews/{voiceKey}.wav
+    match /previews/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;  // Only Cloud Functions can write
+    }
+    
+    // Future: Household audio (requires custom claims)
+    // Path: audio/households/{householdId}/{storyId}.wav
+    // Uncomment when household feature is implemented
+    // match /audio/households/{householdId}/{allPaths=**} {
+    //   allow read, write: if request.auth != null
+    //     && request.auth.token.householdId == householdId;
+    // }
+  }
+}
