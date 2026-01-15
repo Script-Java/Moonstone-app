@@ -1,14 +1,16 @@
-import React from "react";
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import React from "react";
 
-import { Redirect } from "expo-router";
-import { useFirebase } from "@/components/FirebaseStore";
-import { ActivityIndicator, View } from "react-native";
 import { BedtimeModeProvider } from "@/components/BedtimeModeContext";
+import { useFirebase } from "@/components/FirebaseStore";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Redirect } from "expo-router";
+import { ActivityIndicator, View } from "react-native";
 
 export default function TabLayout() {
   const { user, isLoading } = useFirebase();
+  const { colors } = useTheme();
 
   if (isLoading) {
     return (
@@ -27,9 +29,9 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarStyle: { backgroundColor: "#120b18", borderTopColor: "rgba(255,255,255,0.08)" },
-          tabBarActiveTintColor: "#8e2de2",
-          tabBarInactiveTintColor: "rgba(255,255,255,0.45)",
+          tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.border },
+          tabBarActiveTintColor: colors.primary2,
+          tabBarInactiveTintColor: colors.textMuted,
         }}
       >
         <Tabs.Screen

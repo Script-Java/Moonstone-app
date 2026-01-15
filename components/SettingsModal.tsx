@@ -1,7 +1,8 @@
-import React from "react";
-import { View, Text, Pressable, Modal, ScrollView, TextInput } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import VoiceSelector, { VoiceKey } from "@/components/VoiceSelector";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 export type StoryLength = "short" | "standard" | "long";
 
@@ -27,6 +28,7 @@ const storyLengths: { key: StoryLength; label: string; duration: string; descrip
 
 
 export default function SettingsModal({ visible, onClose, settings, onUpdateSettings }: SettingsModalProps) {
+    const { colors } = useTheme();
     const [localSettings, setLocalSettings] = React.useState<StorySettings>(settings);
     const [voiceModalVisible, setVoiceModalVisible] = React.useState(false);
 
@@ -67,7 +69,7 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                     <View
                         className="rounded-t-[32px] overflow-hidden"
                         style={{
-                            backgroundColor: '#0a0a0f',
+                            backgroundColor: colors.background,
                             maxHeight: '85%',
                         }}
                     >
@@ -233,7 +235,7 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                 presentationStyle="pageSheet"
                 onRequestClose={() => setVoiceModalVisible(false)}
             >
-                <View style={{ flex: 1, backgroundColor: '#0a0a0f' }}>
+                <View style={{ flex: 1, backgroundColor: colors.background }}>
                     <View className="flex-row items-center justify-between px-5 pt-5 pb-3">
                         <Pressable
                             onPress={() => setVoiceModalVisible(false)}

@@ -1,6 +1,7 @@
-import React from "react";
-import { View, Text, Pressable, Modal, ScrollView } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 interface SupportModalProps {
     visible: boolean;
@@ -17,6 +18,7 @@ export default function SupportModal({
     icon,
     content,
 }: SupportModalProps) {
+    const { colors } = useTheme();
     if (!visible) return null;
 
     return (
@@ -45,7 +47,7 @@ export default function SupportModal({
                     <View
                         className="rounded-t-[32px] overflow-hidden"
                         style={{
-                            backgroundColor: "#0a0a0f",
+                            backgroundColor: colors.background,
                             maxHeight: "85%",
                         }}
                     >

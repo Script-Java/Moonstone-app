@@ -1,18 +1,10 @@
-// preview.ts
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { storage } from "./firebase";
 import { generateVoicePreview, VOICE_PACK, VoiceKey } from "./tts";
 
-/**
- * previewVoice Cloud Function
- * - Validates voiceKey
- * - Caches preview WAV in Storage
- * - ALWAYS returns a signed URL (consistent playback + private by default)
- */
 export const previewVoice = onCall({ cors: true, memory: "512MiB" }, async (request) => {
     const { voiceKey } = request.data || {};
 
-    // Validate voice key
     if (!voiceKey || !VOICE_PACK[voiceKey as VoiceKey]) {
         throw new HttpsError(
             "invalid-argument",
@@ -21,26 +13,30 @@ export const previewVoice = onCall({ cors: true, memory: "512MiB" }, async (requ
     }
 
     const typedVoiceKey = voiceKey as VoiceKey;
+
+    // Generate preview audio (returns { buffer, contentType, extension })
+    const audio = await generateVoicePreview(typedVoiceKey);
+
     const bucket = storage.bucket();
-    const filePath = `previews/${typedVoiceKey}.wav`;
+    const filePath = `previews/${typedVoiceKey}.${audio.extension}`;
     const file = bucket.file(filePath);
 
     try {
-        // If preview exists, return path for client getDownloadURL
         const [exists] = await file.exists();
+
         if (exists) {
-            return { previewPath: filePath, cached: true, voiceKey: typedVoiceKey };
+            const [url] = await file.getSignedUrl({
+                action: "read",
+                expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            });
+            return { url, cached: true };
         }
 
-        // Generate new preview (WAV)
-        const audioBuffer = await generateVoicePreview(typedVoiceKey);
-
-        // Save to Storage (private object; accessed via getDownloadURL on client)
-        await file.save(audioBuffer, {
+        await file.save(audio.buffer, {
             resumable: false,
             metadata: {
-                contentType: "audio/wav",
-                cacheControl: "private, max-age=604800",
+                contentType: audio.contentType,
+                cacheControl: "public, max-age=86400",
                 metadata: {
                     voiceKey: typedVoiceKey,
                     generatedAt: new Date().toISOString(),
@@ -48,8 +44,12 @@ export const previewVoice = onCall({ cors: true, memory: "512MiB" }, async (requ
             },
         });
 
-        // Return path for client getDownloadURL
-        return { previewPath: filePath, cached: false, voiceKey: typedVoiceKey };
+        const [url] = await file.getSignedUrl({
+            action: "read",
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        });
+
+        return { url, cached: false };
     } catch (error: any) {
         console.error(`❌ Failed to generate preview for ${voiceKey}:`, error);
         throw new HttpsError("internal", `Preview generation failed: ${error?.message || String(error)}`);

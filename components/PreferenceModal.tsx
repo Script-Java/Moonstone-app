@@ -1,6 +1,7 @@
-import React from "react";
-import { View, Text, Pressable, Modal, ScrollView } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 export interface PreferenceOption {
     value: string;
@@ -27,6 +28,7 @@ export default function PreferenceModal({
     selectedValue,
     onSelect,
 }: PreferenceModalProps) {
+    const { colors } = useTheme();
     const handleSelect = (value: string) => {
         onSelect(value);
         onClose();
@@ -60,7 +62,7 @@ export default function PreferenceModal({
                     <View
                         className="rounded-t-[32px] overflow-hidden"
                         style={{
-                            backgroundColor: "#0a0a0f",
+                            backgroundColor: colors.background,
                             maxHeight: "75%",
                         }}
                     >

@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useFirebase } from "@/components/FirebaseStore";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
-export type ThemeType = "purple" | "dark" | "light";
+export type ThemeType = "purple" | "midnight" | "obsidian" | "slate";
 
 export interface ThemeColors {
     // Background colors
@@ -41,33 +41,47 @@ const THEME_CONFIG: Record<ThemeType, ThemeColors> = {
         good: "#34d399",
         danger: "#fb7185",
     },
-    dark: {
-        background: "#0a0a0f",
-        background2: "#15151a",
-        surface: "rgba(255,255,255,0.04)",
-        surface2: "rgba(255,255,255,0.06)",
+    midnight: {
+        background: "#0a0e1a",
+        background2: "#111827",
+        surface: "rgba(59,130,246,0.08)",
+        surface2: "rgba(59,130,246,0.12)",
         text: "#ffffff",
         textMuted: "rgba(255,255,255,0.65)",
         textFaint: "rgba(255,255,255,0.40)",
-        primary: "#6b7280",
-        primary2: "#9ca3af",
-        border: "rgba(255,255,255,0.08)",
+        primary: "#3b82f6",
+        primary2: "#60a5fa",
+        border: "rgba(59,130,246,0.15)",
         good: "#34d399",
         danger: "#fb7185",
     },
-    light: {
-        background: "#ffffff",
-        background2: "#f9fafb",
-        surface: "rgba(0,0,0,0.04)",
-        surface2: "rgba(0,0,0,0.06)",
-        text: "#111827",
-        textMuted: "rgba(0,0,0,0.60)",
-        textFaint: "rgba(0,0,0,0.40)",
-        primary: "#7c3aed",
-        primary2: "#8b5cf6",
-        border: "rgba(0,0,0,0.10)",
-        good: "#059669",
-        danger: "#e11d48",
+    obsidian: {
+        background: "#000000",
+        background2: "#0a0a0a",
+        surface: "rgba(255,255,255,0.04)",
+        surface2: "rgba(255,255,255,0.06)",
+        text: "#ffffff",
+        textMuted: "rgba(255,255,255,0.70)",
+        textFaint: "rgba(255,255,255,0.45)",
+        primary: "#ffffff",
+        primary2: "#e5e5e5",
+        border: "rgba(255,255,255,0.08)",
+        good: "#10b981",
+        danger: "#ef4444",
+    },
+    slate: {
+        background: "#0f1419",
+        background2: "#1a1f2e",
+        surface: "rgba(148,163,184,0.08)",
+        surface2: "rgba(148,163,184,0.12)",
+        text: "#f1f5f9",
+        textMuted: "rgba(241,245,249,0.65)",
+        textFaint: "rgba(241,245,249,0.40)",
+        primary: "#94a3b8",
+        primary2: "#cbd5e1",
+        border: "rgba(148,163,184,0.15)",
+        good: "#22c55e",
+        danger: "#f87171",
     },
 };
 
@@ -87,10 +101,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!user || !db) return;
 
-        const unsub = onSnapshot(doc(db, "users", user.uid), (doc) => {
-            const data = doc.data();
-            const userTheme = data?.theme || "purple";
-            setThemeState(userTheme);
+        const unsub = onSnapshot(doc(db, "users", user.uid), (snapshot) => {
+            const data = snapshot.data();
+            let userTheme = data?.theme || "purple";
+
+            // Validate theme exists, fallback to purple for old/invalid themes
+            if (!THEME_CONFIG[userTheme as ThemeType]) {
+                console.warn(`Invalid theme '${userTheme}' detected. Falling back to 'purple'.`);
+                userTheme = "purple";
+
+                // Update Firestore to fix invalid theme
+                updateDoc(doc(db, "users", user.uid), { theme: "purple" }).catch(console.error);
+            }
+
+            setThemeState(userTheme as ThemeType);
         });
 
         return () => unsub();
@@ -111,7 +135,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const colors = THEME_CONFIG[theme];
+    const colors = THEME_CONFIG[theme] || THEME_CONFIG.purple;
 
     return (
         <ThemeContext.Provider value={{ theme, colors, setTheme }}>

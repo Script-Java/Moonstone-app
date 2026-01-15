@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, Pressable, ScrollView, ImageBackground, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Screen from "@/components/Screen";
-import Logo from "@/components/Logo";
-import { useLocalSearchParams } from "expo-router";
-import { useFirebase } from "@/components/FirebaseStore";
-import { doc, getDoc } from "firebase/firestore";
-import { getStorage, ref, getDownloadURL } from "firebase/storage";
-import { getAuth } from "firebase/auth";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, ImageBackground, Pressable, ScrollView, Text, View } from "react-native";
+
 import { useBedtimeMode } from "@/components/BedtimeModeContext";
 import BedtimeModeScreen from "@/components/BedtimeModeScreen";
+import { useFirebase } from "@/components/FirebaseStore";
+import Logo from "@/components/Logo";
+import Screen from "@/components/Screen";
+
+import { getAuth } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { getDownloadURL, getStorage, ref } from "firebase/storage";
 
 // Ambient sound assets
 const AMBIENT_SOUNDS = {
@@ -18,74 +20,86 @@ const AMBIENT_SOUNDS = {
   Ocean: require("@/assets/audio/ocean.mp3"),
   Fire: require("@/assets/audio/fire.mp3"),
   Forest: require("@/assets/audio/forest.mp3"),
-};
+} as const;
+
+type AmbienceKey = keyof typeof AMBIENT_SOUNDS;
 
 export default function Sleep() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const { db, app } = useFirebase();
-  const { isActive: bedtimeModeActive, activateBedtimeMode } = useBedtimeMode();
 
   const [story, setStory] = useState<any>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
 
-  // Mixer State
-  const [ambience, setAmbience] = useState<"Rain" | "Ocean" | "Fire" | "Forest">("Rain");
+  // Mixer state
+  const [ambience, setAmbience] = useState<AmbienceKey>("Rain");
 
-  // Fetch Story and Audio URL
   useEffect(() => {
     async function fetchStory() {
       console.log("🔍 Sleep tab - checking for storyId:", storyId);
+
       if (!storyId || !db) {
         console.log("⚠️ Missing storyId or db:", { storyId, db: !!db });
+        setFetching(false);
         return;
       }
+
       setFetching(true);
       console.log("📥 Fetching story from Firestore:", storyId);
+
       try {
         const docRef = doc(db, "stories", storyId);
         const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          console.log("✅ Story fetched successfully:", {
-            id: storyId,
-            title: data.title,
-            hasAudioPath: !!data.audioPath,
-          });
-          setStory(data);
 
-          if (data.audioPath) {
-            console.log("🎵 Fetching audio URL from storage:", data.audioPath);
-
-            // DEBUG: Check auth state
-            const auth = getAuth();
-            console.log("🔐 Auth state when loading audio:", {
-              currentUser: auth.currentUser?.uid,
-              email: auth.currentUser?.email,
-            });
-
-            // Extract UID from audioPath for comparison
-            const pathMatch = data.audioPath.match(/^audio\/([^\/]+)\//);
-            const audioUid = pathMatch ? pathMatch[1] : "unknown";
-
-            console.log("🔍 Permission check:", {
-              "AUTH UID": auth.currentUser?.uid || "NOT AUTHENTICATED",
-              "AUDIO UID (from path)": audioUid,
-              "Match": auth.currentUser?.uid === audioUid ? "✅ YES" : "❌ NO - THIS WILL FAIL",
-            });
-
-            const storage = getStorage(app!);
-            const audioRef = ref(storage, data.audioPath);
-            const url = await getDownloadURL(audioRef);
-            console.log("✅ Audio URL fetched:", url.substring(0, 50) + "...");
-            setAudioUrl(url);
-          } else {
-            console.warn("⚠️ Story has no audioPath");
-          }
-        } else {
+        if (!snap.exists()) {
           console.error("❌ Story document not found in Firestore:", storyId);
           alert("Story not found.");
+          setStory(null);
+          setAudioUrl(null);
+          return;
         }
+
+        const data = snap.data();
+        console.log("✅ Story fetched successfully:", {
+          id: storyId,
+          title: data.title,
+          hasAudioPath: !!data.audioPath,
+        });
+
+        setStory(data);
+
+        if (!data.audioPath) {
+          console.warn("⚠️ Story has no audioPath");
+          setAudioUrl(null);
+          return;
+        }
+
+        console.log("🎵 Fetching audio URL from storage:", data.audioPath);
+
+        // DEBUG: auth state
+        const auth = getAuth();
+        console.log("🔐 Auth state when loading audio:", {
+          currentUser: auth.currentUser?.uid,
+          email: auth.currentUser?.email,
+        });
+
+        // Extract UID from audioPath for comparison
+        const pathMatch = String(data.audioPath).match(/^audio\/([^\/]+)\//);
+        const audioUid = pathMatch ? pathMatch[1] : "unknown";
+
+        console.log("🔍 Permission check:", {
+          "AUTH UID": auth.currentUser?.uid || "NOT AUTHENTICATED",
+          "AUDIO UID (from path)": audioUid,
+          Match: auth.currentUser?.uid === audioUid ? "✅ YES" : "❌ NO - THIS WILL FAIL",
+        });
+
+        const storage = getStorage(app!);
+        const audioRef = ref(storage, data.audioPath);
+        const url = await getDownloadURL(audioRef);
+
+        console.log("✅ Audio URL fetched:", url.substring(0, 60) + "...");
+        setAudioUrl(url);
       } catch (e: any) {
         console.error("❌ Failed to load story:", e);
         console.error("Error details:", {
@@ -99,12 +113,13 @@ export default function Sleep() {
         console.log("✅ Story fetch completed");
       }
     }
+
     fetchStory();
   }, [db, storyId, app]);
 
   return (
     <Screen>
-      {(!story && !fetching) ? (
+      {!story && !fetching ? (
         <View className="flex-1 items-center justify-center p-5">
           <Text className="text-white font-bold text-center">Select a story from your library.</Text>
         </View>
@@ -121,144 +136,159 @@ export default function Sleep() {
   );
 }
 
-// Sub-component to handle Audio Hooks (which need a stable or valid source to init sometimes, 
-// or at least we want to separate proper playback logic)
 function StoryPlayer({
   story,
   audioUrl,
   ambience,
   setAmbience,
-  loading
+  loading,
 }: {
-  story: any,
-  audioUrl: string | null,
-  ambience: "Rain" | "Ocean" | "Fire" | "Forest",
-  setAmbience: (a: any) => void,
-  loading: boolean
+  story: any;
+  audioUrl: string | null;
+  ambience: AmbienceKey;
+  setAmbience: (a: AmbienceKey) => void;
+  loading: boolean;
 }) {
-  const { isActive: bedtimeModeActive, sleepTimer, sleepTimerRemaining, setSleepTimer, updateTimerRemaining, activateBedtimeMode } = useBedtimeMode();
+  const {
+    isActive: bedtimeModeActive,
+    sleepTimer,
+    sleepTimerRemaining,
+    setSleepTimer,
+    updateTimerRemaining,
+    activateBedtimeMode,
+  } = useBedtimeMode();
+
+  // iOS audio mode config (kept as you had it)
+  useEffect(() => {
+    const configureAudioMode = async () => {
+      try {
+        const { Audio } = await import("expo-av");
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: false,
+        });
+        console.log("✅ Audio mode configured");
+      } catch (err) {
+        console.warn("Could not set audio mode:", err);
+      }
+    };
+    configureAudioMode();
+  }, []);
 
   // --- Story Audio Player ---
-  const storyPlayer = useAudioPlayer(audioUrl ? { uri: audioUrl } : null);
+  const storySource = useMemo(() => (audioUrl ? { uri: audioUrl } : null), [audioUrl]);
+  const storyPlayer = useAudioPlayer(storySource);
   const storyStatus = useAudioPlayerStatus(storyPlayer);
 
   // --- Ambient Audio Player ---
-  // Create a new player whenever ambience changes
-  const ambientPlayer = useAudioPlayer(AMBIENT_SOUNDS[ambience]);
+  const ambientSource = useMemo(() => AMBIENT_SOUNDS[ambience], [ambience]);
+  const ambientPlayer = useAudioPlayer(ambientSource);
+  const ambientStatus = useAudioPlayerStatus(ambientPlayer);
 
+  // Configure ambient player defaults
   useEffect(() => {
-    if (ambientPlayer) {
-      ambientPlayer.loop = true;
-      ambientPlayer.volume = 0.3;
-    }
+    if (!ambientPlayer) return;
+    ambientPlayer.loop = true;
+    ambientPlayer.volume = 0.3;
   }, [ambientPlayer]);
 
-  // When ambience changes, we need to stop the old player and start the new one
+  // When ambience changes, stop previous instance (cleanup) and start new one if story is playing
   useEffect(() => {
     if (!ambientPlayer) return;
 
-    // Set up the new ambient player
-    ambientPlayer.loop = true;
-    ambientPlayer.volume = 0.3;
+    console.log(`🎛️ Ambience set to: ${ambience}`);
 
-    // If story is currently playing, start the new ambient sound
+    // Start ambience only when story is playing (your original behavior)
     if (storyStatus.playing) {
+      console.log(`▶️ Starting ambience: ${ambience} (story playing)`);
       ambientPlayer.play();
-    }
-
-    // Cleanup function to stop the player when component unmounts or ambience changes
-    return () => {
-      if (ambientPlayer) {
-        ambientPlayer.pause();
-      }
-    };
-  }, [ambience, ambientPlayer]);
-
-  // Sync Ambient with Story
-  useEffect(() => {
-    if (!storyPlayer || !ambientPlayer) return;
-
-    // If story is playing, ensure ambient is playing
-    if (storyStatus.playing && !ambientPlayer.playing) {
-      ambientPlayer.play();
-    }
-    // If story is paused (and user paused it manually or it ended), pause ambient?
-    else if (!storyStatus.playing && ambientPlayer.playing) {
+    } else {
+      console.log(`⏸️ Not starting ambience: ${ambience} (story paused)`);
       ambientPlayer.pause();
     }
-  }, [storyStatus.playing, ambientPlayer, storyPlayer]);
+
+    return () => {
+      // Cleanup old ambience when switching
+      try {
+        ambientPlayer.pause();
+        ambientPlayer.currentTime = 0; // optional reset
+      } catch { }
+    };
+  }, [ambience, ambientPlayer, storyStatus.playing]);
+
+  // Keep ambience synced to story playback using *status hooks*
+  useEffect(() => {
+    if (!ambientPlayer) return;
+
+    if (storyStatus.playing && !ambientStatus.playing) {
+      ambientPlayer.play();
+    } else if (!storyStatus.playing && ambientStatus.playing) {
+      ambientPlayer.pause();
+    }
+  }, [storyStatus.playing, ambientStatus.playing, ambientPlayer]);
 
   // Sleep Timer Countdown
   useEffect(() => {
-    if (!sleepTimer || sleepTimerRemaining === null || sleepTimerRemaining <= 0) return;
+    if (!sleepTimer || sleepTimerRemaining == null || sleepTimerRemaining <= 0) return;
 
     const interval = setInterval(() => {
       const newRemaining = sleepTimerRemaining - 1;
       updateTimerRemaining(newRemaining);
 
       if (newRemaining <= 0) {
-        // Timer finished, start fade out
         handleTimerComplete();
       } else if (newRemaining <= 30) {
-        // Last 30 seconds, start fading out story
         const fadeProgress = newRemaining / 30;
-        if (storyPlayer) {
-          storyPlayer.volume = fadeProgress;
-        }
+        try {
+          if (storyPlayer) storyPlayer.volume = fadeProgress;
+        } catch { }
       }
     }, 1000);
 
     return () => clearInterval(interval);
+    // IMPORTANT: keep same deps pattern you had (timerRemaining drives this)
   }, [sleepTimer, sleepTimerRemaining]);
 
   const handleTimerComplete = () => {
-    // Pause story
-    if (storyPlayer) {
-      storyPlayer.pause();
-      storyPlayer.volume = 1; // Reset for next time
-    }
+    try {
+      if (storyPlayer) {
+        storyPlayer.pause();
+        storyPlayer.volume = 1;
+      }
+    } catch { }
 
-    // Optionally continue ambient at low volume for 5 minutes
-    if (ambientPlayer) {
-      ambientPlayer.volume = 0.2;
+    // Optional: continue ambience briefly then fade out
+    try {
+      if (ambientPlayer) {
+        ambientPlayer.volume = 0.2;
 
-      // Fade out ambient over final 2 minutes after 3 minutes
-      setTimeout(() => {
-        const ambientFadeInterval = setInterval(() => {
-          if (ambientPlayer.volume > 0.05) {
-            ambientPlayer.volume = Math.max(0, ambientPlayer.volume - 0.01);
-          } else {
-            ambientPlayer.pause();
-            clearInterval(ambientFadeInterval);
-          }
-        }, 2400); // 2 minutes / 50 steps = 2400ms per step
-      }, 180000); // 3 minutes
-    }
+        setTimeout(() => {
+          const ambientFadeInterval = setInterval(() => {
+            try {
+              if (ambientPlayer.volume > 0.05) {
+                ambientPlayer.volume = Math.max(0, ambientPlayer.volume - 0.01);
+              } else {
+                ambientPlayer.pause();
+                clearInterval(ambientFadeInterval);
+              }
+            } catch {
+              clearInterval(ambientFadeInterval);
+            }
+          }, 2400);
+        }, 180000);
+      }
+    } catch { }
 
-    // Reset timer
     setSleepTimer(null);
   };
 
-  // Helper for toggle
+  // Helpers
   const togglePlay = () => {
-    if (storyStatus.playing) {
-      storyPlayer.pause();
-    } else {
-      storyPlayer.play();
-    }
+    if (!storyPlayer) return;
+    if (storyStatus.playing) storyPlayer.pause();
+    else storyPlayer.play();
   };
-
-  const formatTime = (ms: number) => {
-    if (!ms || ms < 0) return "0:00";
-    const totalSec = Math.floor(ms / 1000);
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${min}:${sec < 10 ? "0" + sec : sec}`;
-  };
-
-  const currentSeconds = storyStatus.currentTime;
-  const totalSeconds = storyStatus.duration;
-  const timeLeftSec = totalSeconds - currentSeconds;
 
   const formatSeconds = (s: number) => {
     if (!s || s < 0) return "0:00";
@@ -268,32 +298,34 @@ function StoryPlayer({
     return `${min}:${sec < 10 ? "0" + sec : sec}`;
   };
 
+  const currentSeconds = storyStatus.currentTime || 0;
+  const totalSeconds = storyStatus.duration || 0;
+  const timeLeftSec = Math.max(0, totalSeconds - currentSeconds);
+
   const handleChangeSleepTimer = (minutes: number) => {
     setSleepTimer(minutes);
   };
 
-  // If Bedtime Mode is active, show BedtimeModeScreen instead
   if (bedtimeModeActive) {
     return (
       <BedtimeModeScreen
         currentAudioTitle={story?.title || "Audio"}
-        isPlaying={storyStatus.playing}
+        isPlaying={!!storyStatus.playing}
         onTogglePlay={togglePlay}
         onChangeSleepTimer={handleChangeSleepTimer}
       />
     );
   }
 
-  // Regular Sleep tab UI
   return (
     <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 28 }}>
       {/* Header */}
       <View className="flex-row items-center justify-between mb-2">
         <Logo size="small" glow={true} />
-
         <Pressable
           onPress={activateBedtimeMode}
-          className="flex-row items-center gap-2 rounded-full border border-border bg-surface px-4 py-2">
+          className="flex-row items-center gap-2 rounded-full border border-border bg-surface px-4 py-2"
+        >
           <Ionicons name="moon-outline" size={16} color="rgba(255,255,255,0.75)" />
           <Text className="text-white/75 font-extrabold">Bedtime Mode</Text>
         </Pressable>
@@ -301,14 +333,14 @@ function StoryPlayer({
 
       {/* Greeting */}
       <Text className="text-white text-4xl font-extrabold mt-6">Sweet Dreams</Text>
-      <Text className="text-muted mt-2 text-base font-semibold">
-        {story ? "Now Playing" : "Loading story..."}
-      </Text>
+      <Text className="text-muted mt-2 text-base font-semibold">{story ? "Now Playing" : "Loading story..."}</Text>
 
       {/* Player Card */}
       <View className="mt-5 rounded-3xl border border-border bg-surface overflow-hidden">
         <ImageBackground
-          source={{ uri: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=80" }}
+          source={{
+            uri: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=80",
+          }}
           style={{ height: 320 }}
         >
           <View className="absolute inset-0 bg-black/45" />
@@ -327,9 +359,11 @@ function StoryPlayer({
                   {story?.title || "Loading..."}
                 </Text>
                 <Text className="text-white/65 font-bold mt-1" numberOfLines={1}>
-                  {!story ? "Fetching story..." :
-                    storyStatus.isBuffering ? "Buffering audio..." :
-                      (story.mood || "Story") + " Story"}
+                  {!story
+                    ? "Fetching story..."
+                    : storyStatus.isBuffering
+                      ? "Buffering audio..."
+                      : (story.mood || "Story") + " Story"}
                 </Text>
               </View>
 
@@ -339,7 +373,12 @@ function StoryPlayer({
                 </View>
               ) : (
                 <Pressable onPress={togglePlay} className="h-16 w-16 rounded-full bg-white items-center justify-center">
-                  <Ionicons name={storyStatus.playing ? "pause" : "play"} size={28} color="#7311d4" style={{ marginLeft: storyStatus.playing ? 0 : 2 }} />
+                  <Ionicons
+                    name={storyStatus.playing ? "pause" : "play"}
+                    size={28}
+                    color="#7311d4"
+                    style={{ marginLeft: storyStatus.playing ? 0 : 2 }}
+                  />
                 </Pressable>
               )}
             </View>
@@ -359,14 +398,22 @@ function StoryPlayer({
       <View className="mt-6">
         <View className="flex-row items-center justify-between">
           <Text className="text-white text-xl font-extrabold">Soundscape</Text>
-          <Text className="text-primary2 font-extrabold">Mixer settings</Text>
+          <Text className="text-primary2 font-extrabold">
+            {ambientStatus.playing ? "Playing" : "Ready"}
+          </Text>
         </View>
 
         <View className="mt-3 flex-row justify-between">
           {(["Rain", "Ocean", "Fire", "Forest"] as const).map((s) => {
             const active = ambience === s;
             const icon =
-              s === "Rain" ? "water-outline" : s === "Ocean" ? "pulse-outline" : s === "Fire" ? "flame-outline" : "leaf-outline";
+              s === "Rain"
+                ? "water-outline"
+                : s === "Ocean"
+                  ? "pulse-outline"
+                  : s === "Fire"
+                    ? "flame-outline"
+                    : "leaf-outline";
 
             return (
               <Pressable
