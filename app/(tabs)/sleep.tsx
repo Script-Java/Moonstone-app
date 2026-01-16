@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ImageBackground, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ImageBackground, Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import { useBedtimeMode } from "@/components/BedtimeModeContext";
 import BedtimeModeScreen from "@/components/BedtimeModeScreen";
@@ -27,6 +28,7 @@ type AmbienceKey = keyof typeof AMBIENT_SOUNDS;
 export default function Sleep() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const { db, app } = useFirebase();
+  const { colors } = useTheme();
 
   const [story, setStory] = useState<any>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -34,6 +36,9 @@ export default function Sleep() {
 
   // Mixer state
   const [ambience, setAmbience] = useState<AmbienceKey>("Rain");
+  const [ambientEnabled, setAmbientEnabled] = useState(false);
+  const [storyVolume, setStoryVolume] = useState(1.0);
+  const [ambientVolume, setAmbientVolume] = useState(0.3);
 
   useEffect(() => {
     async function fetchStory() {
@@ -129,25 +134,48 @@ export default function Sleep() {
           audioUrl={audioUrl}
           ambience={ambience}
           setAmbience={setAmbience}
+          ambientEnabled={ambientEnabled}
+          setAmbientEnabled={setAmbientEnabled}
+          storyVolume={storyVolume}
+          setStoryVolume={setStoryVolume}
+          ambientVolume={ambientVolume}
+          setAmbientVolume={setAmbientVolume}
           loading={fetching}
+          colors={colors}
         />
       )}
     </Screen>
   );
 }
 
+import { ThemeColors, useTheme } from "@/contexts/ThemeContext";
+
 function StoryPlayer({
   story,
   audioUrl,
   ambience,
   setAmbience,
+  ambientEnabled,
+  setAmbientEnabled,
+  storyVolume,
+  setStoryVolume,
+  ambientVolume,
+  setAmbientVolume,
   loading,
+  colors,
 }: {
   story: any;
   audioUrl: string | null;
   ambience: AmbienceKey;
   setAmbience: (a: AmbienceKey) => void;
+  ambientEnabled: boolean;
+  setAmbientEnabled: (enabled: boolean) => void;
+  storyVolume: number;
+  setStoryVolume: (volume: number) => void;
+  ambientVolume: number;
+  setAmbientVolume: (volume: number) => void;
   loading: boolean;
+  colors: ThemeColors;
 }) {
   const {
     isActive: bedtimeModeActive,
@@ -157,6 +185,8 @@ function StoryPlayer({
     updateTimerRemaining,
     activateBedtimeMode,
   } = useBedtimeMode();
+
+  const [mixerModalVisible, setMixerModalVisible] = React.useState(false);
 
   // iOS audio mode config (kept as you had it)
   useEffect(() => {
@@ -181,52 +211,46 @@ function StoryPlayer({
   const storyPlayer = useAudioPlayer(storySource);
   const storyStatus = useAudioPlayerStatus(storyPlayer);
 
-  // --- Ambient Audio Player ---
-  const ambientSource = useMemo(() => AMBIENT_SOUNDS[ambience], [ambience]);
-  const ambientPlayer = useAudioPlayer(ambientSource);
-  const ambientStatus = useAudioPlayerStatus(ambientPlayer);
+  // --- Ambient Audio Players (Multi-player strategy for instant switching/no crosstalk) ---
+  const rainPlayer = useAudioPlayer(AMBIENT_SOUNDS.Rain);
+  const oceanPlayer = useAudioPlayer(AMBIENT_SOUNDS.Ocean);
+  const firePlayer = useAudioPlayer(AMBIENT_SOUNDS.Fire);
+  const forestPlayer = useAudioPlayer(AMBIENT_SOUNDS.Forest);
 
-  // Configure ambient player defaults
+  // Map of keys to players
+  const ambientPlayers = useMemo(() => ({
+    Rain: rainPlayer,
+    Ocean: oceanPlayer,
+    Fire: firePlayer,
+    Forest: forestPlayer,
+  }), [rainPlayer, oceanPlayer, firePlayer, forestPlayer]);
+
+  // Apply volume and loop to ALL players (so they are ready)
   useEffect(() => {
-    if (!ambientPlayer) return;
-    ambientPlayer.loop = true;
-    ambientPlayer.volume = 0.3;
-  }, [ambientPlayer]);
+    Object.values(ambientPlayers).forEach(player => {
+      if (!player) return;
+      player.loop = true;
+      // If separate volume per channel is needed later, do it here. 
+      // For now, global ambient volume.
+      player.volume = ambientEnabled ? ambientVolume : 0;
+    });
+  }, [ambientPlayers, ambientVolume, ambientEnabled]);
 
-  // When ambience changes, stop previous instance (cleanup) and start new one if story is playing
+  // Master Control: Play active, Pause others
   useEffect(() => {
-    if (!ambientPlayer) return;
+    Object.entries(ambientPlayers).forEach(([key, player]) => {
+      if (!player) return;
 
-    console.log(`🎛️ Ambience set to: ${ambience}`);
+      const isActive = key === ambience;
+      const shouldPlay = isActive && ambientEnabled && storyStatus.playing;
 
-    // Start ambience only when story is playing (your original behavior)
-    if (storyStatus.playing) {
-      console.log(`▶️ Starting ambience: ${ambience} (story playing)`);
-      ambientPlayer.play();
-    } else {
-      console.log(`⏸️ Not starting ambience: ${ambience} (story paused)`);
-      ambientPlayer.pause();
-    }
-
-    return () => {
-      // Cleanup old ambience when switching
-      try {
-        ambientPlayer.pause();
-        ambientPlayer.currentTime = 0; // optional reset
-      } catch { }
-    };
-  }, [ambience, ambientPlayer, storyStatus.playing]);
-
-  // Keep ambience synced to story playback using *status hooks*
-  useEffect(() => {
-    if (!ambientPlayer) return;
-
-    if (storyStatus.playing && !ambientStatus.playing) {
-      ambientPlayer.play();
-    } else if (!storyStatus.playing && ambientStatus.playing) {
-      ambientPlayer.pause();
-    }
-  }, [storyStatus.playing, ambientStatus.playing, ambientPlayer]);
+      if (shouldPlay) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    });
+  }, [ambientPlayers, ambientEnabled, storyStatus.playing, ambience]);
 
   // Sleep Timer Countdown
   useEffect(() => {
@@ -259,24 +283,27 @@ function StoryPlayer({
     } catch { }
 
     // Optional: continue ambience briefly then fade out
+    // Optional: continue ambience briefly then fade out
     try {
-      if (ambientPlayer) {
-        ambientPlayer.volume = 0.2;
+      const activePlayer = ambientPlayers[ambience];
+      if (activePlayer && ambientEnabled) {
+        // Start fading the active player
+        activePlayer.volume = 0.2;
 
         setTimeout(() => {
           const ambientFadeInterval = setInterval(() => {
             try {
-              if (ambientPlayer.volume > 0.05) {
-                ambientPlayer.volume = Math.max(0, ambientPlayer.volume - 0.01);
+              if (activePlayer.volume > 0.05) {
+                activePlayer.volume = Math.max(0, activePlayer.volume - 0.01);
               } else {
-                ambientPlayer.pause();
+                activePlayer.pause();
                 clearInterval(ambientFadeInterval);
               }
             } catch {
               clearInterval(ambientFadeInterval);
             }
-          }, 2400);
-        }, 180000);
+          }, 2400); // Slow fade over ~minutes
+        }, 180000); // Wait 3 mins before starting fade
       }
     } catch { }
 
@@ -376,7 +403,7 @@ function StoryPlayer({
                   <Ionicons
                     name={storyStatus.playing ? "pause" : "play"}
                     size={28}
-                    color="#7311d4"
+                    color={colors.primary}
                     style={{ marginLeft: storyStatus.playing ? 0 : 2 }}
                   />
                 </Pressable>
@@ -398,22 +425,27 @@ function StoryPlayer({
       <View className="mt-6">
         <View className="flex-row items-center justify-between">
           <Text className="text-white text-xl font-extrabold">Soundscape</Text>
-          <Text className="text-primary2 font-extrabold">
-            {ambientStatus.playing ? "Playing" : "Ready"}
-          </Text>
+
+          {/* Toggle */}
+          <Pressable
+            onPress={() => setAmbientEnabled(!ambientEnabled)}
+            className={[
+              "px-4 py-2 rounded-full border",
+              ambientEnabled ? "border-primary/70 bg-primary/15" : "border-border bg-surface",
+            ].join(" ")}
+          >
+            <Text className={["font-extrabold", ambientEnabled ? "text-primary2" : "text-white/60"].join(" ")}>
+              {ambientEnabled ? "Ambient: ON" : "Ambient: OFF"}
+            </Text>
+          </Pressable>
         </View>
 
+        {/* Buttons */}
         <View className="mt-3 flex-row justify-between">
           {(["Rain", "Ocean", "Fire", "Forest"] as const).map((s) => {
             const active = ambience === s;
             const icon =
-              s === "Rain"
-                ? "water-outline"
-                : s === "Ocean"
-                  ? "pulse-outline"
-                  : s === "Fire"
-                    ? "flame-outline"
-                    : "leaf-outline";
+              s === "Rain" ? "water-outline" : s === "Ocean" ? "pulse-outline" : s === "Fire" ? "flame-outline" : "leaf-outline";
 
             return (
               <Pressable
@@ -421,18 +453,137 @@ function StoryPlayer({
                 onPress={() => setAmbience(s)}
                 className={[
                   "w-[23%] rounded-2xl border p-4 items-center",
-                  active ? "border-primary/70 bg-primary/15" : "border-border bg-surface",
+                  active ? "border-primary bg-primary" : "border-border bg-surface",
+                  !ambientEnabled ? "opacity-50" : "",
                 ].join(" ")}
+                disabled={!ambientEnabled}
               >
-                <Ionicons name={icon as any} size={22} color={active ? "#8e2de2" : "rgba(255,255,255,0.55)"} />
-                <Text className={["mt-3 font-extrabold text-sm", active ? "text-primary2" : "text-white/45"].join(" ")}>
+                <Ionicons name={icon as any} size={22} color={active ? colors.onPrimary : "rgba(255,255,255,0.55)"} />
+                <Text className={["mt-3 font-extrabold text-sm", active ? "" : "text-white/45"].join(" ")} style={active ? { color: colors.onPrimary } : {}}>
                   {s}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+
+        {/* Mixer Settings Button */}
+        <Pressable
+          onPress={() => ambientEnabled && setMixerModalVisible(true)}
+          className={[
+            "mt-4 rounded-2xl border border-border bg-surface overflow-hidden",
+            !ambientEnabled ? "opacity-50" : ""
+          ].join(" ")}
+        >
+          <View className="p-4 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-3">
+              <View className="h-10 w-10 rounded-full bg-primary/20 items-center justify-center">
+                <Ionicons name="options-outline" size={20} color={colors.primary} />
+              </View>
+              <View>
+                <Text className="text-white font-extrabold text-base">Mixer Settings</Text>
+                <Text className="text-white/50 font-semibold text-sm">
+                  {ambientEnabled ? "Adjust audio levels" : "Enable ambient to adjust"}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.35)" />
+          </View>
+        </Pressable>
       </View>
+
+      {/* Mixer Modal */}
+      <Modal
+        visible={mixerModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setMixerModalVisible(false)}
+        statusBarTranslucent
+      >
+        <Pressable
+          onPress={() => setMixerModalVisible(false)}
+          className="flex-1 bg-black/70"
+          style={{ backgroundColor: "rgba(0, 0, 0, 0.7)" }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            className="flex-1 justify-end"
+          >
+            <View
+              className="rounded-t-[32px] overflow-hidden"
+              style={{ backgroundColor: "#0a0a0f", maxHeight: "55%" }}
+            >
+              {/* Border */}
+              <View className="h-1 w-full" style={{ backgroundColor: colors.primary }} />
+
+              {/* Header */}
+              <View className="flex-row items-center justify-between px-6 py-5 border-b border-white/10">
+                <Pressable
+                  onPress={() => setMixerModalVisible(false)}
+                  className="h-10 w-10 rounded-full items-center justify-center bg-white/5"
+                >
+                  <Ionicons name="close" size={22} color="rgba(255,255,255,0.9)" />
+                </Pressable>
+
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="options" size={18} color={colors.primary} />
+                  <Text className="text-white text-xl font-extrabold">Mixer Settings</Text>
+                </View>
+
+                <View className="h-10 w-10" />
+              </View>
+
+              {/* Content */}
+              <View className="p-6">
+                {/* Story Volume */}
+                <View>
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-white font-extrabold">Story Volume</Text>
+                    <Text className="text-white/60 font-bold">{Math.round(storyVolume * 100)}%</Text>
+                  </View>
+                  <Slider
+                    value={storyVolume}
+                    onValueChange={setStoryVolume}
+                    minimumValue={0}
+                    maximumValue={1}
+                    step={0.01}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor="rgba(255,255,255,0.2)"
+                    thumbTintColor="#ffffff"
+                  />
+                </View>
+
+                {/* Ambient Volume */}
+                <View className="mt-8">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-white font-extrabold">Ambient Volume</Text>
+                    <Text className="text-white/60 font-bold">
+                      {ambientEnabled ? `${Math.round(ambientVolume * 100)}%` : "OFF"}
+                    </Text>
+                  </View>
+                  <Slider
+                    value={ambientVolume}
+                    onValueChange={setAmbientVolume}
+                    minimumValue={0}
+                    maximumValue={1}
+                    step={0.01}
+                    disabled={!ambientEnabled}
+                    minimumTrackTintColor="#8e2de2"
+                    maximumTrackTintColor="rgba(255,255,255,0.2)"
+                    thumbTintColor="#ffffff"
+                    style={{ opacity: ambientEnabled ? 1 : 0.5 }}
+                  />
+                  {!ambientEnabled && (
+                    <Text className="text-white/40 text-xs mt-3">
+                      Enable ambient sounds to adjust volume
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }

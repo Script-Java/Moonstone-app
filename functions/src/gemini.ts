@@ -1,6 +1,6 @@
 // gemini.ts
 import { VertexAI } from "@google-cloud/vertexai";
-import { vertexAiLocation, MODEL_NAME } from "./config";
+import { MODEL_NAME, vertexAiLocation } from "./config";
 
 /**
  * Gemini story generator (Vertex AI)
@@ -113,16 +113,29 @@ function validateStoryJson(data: any): { title: string; text: string } {
     return { title, text: cleanParagraphs.join("\n\n") };
 }
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 1): Promise<T> {
-    let lastErr: any;
-    for (let attempt = 0; attempt <= retries; attempt++) {
+
+
+// Helper for exponential backoff retry on 429/Resource Exhausted
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+async function withRetry429<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+    let delay = 1000;
+    for (let i = 0; i < retries; i++) {
         try {
             return await fn();
-        } catch (e) {
-            lastErr = e;
+        } catch (e: any) {
+            const msg = String(e?.message || "");
+            const is429 = msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || e?.code === 429;
+
+            // If not a rate limit error, or it's the last try, throw it
+            if (!is429 || i === retries - 1) throw e;
+
+            console.log(`⚠️ Vertex AI 429/Resource Exhausted. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries})`);
+            await sleep(delay);
+            delay *= 2; // Exponential backoff: 1s, 2s, 4s...
         }
     }
-    throw lastErr;
+    throw new Error("Unreachable retry loop end");
 }
 
 function estimateDurationSecFromWords(words: number): number {
@@ -204,12 +217,11 @@ Rules:
 - Use multiple paragraphs to create natural pauses and pacing.
 - Do NOT include markdown fences or commentary.`;
 
-    const result = await withRetry(
+    const result = await withRetry429(
         () =>
             model.generateContent({
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
-            }),
-        1
+            })
     );
 
     const response = (result as any).response;

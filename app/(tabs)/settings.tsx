@@ -47,12 +47,12 @@ const SLEEP_TIMER_OPTIONS: PreferenceOption[] = [
 
 export default function Settings() {
   const { user, db, auth } = useFirebase();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, colors } = useTheme();
   const [credits, setCredits] = React.useState(0);
   const [isPremium, setIsPremium] = React.useState(false);
   const [photoURL, setPhotoURL] = React.useState<string | null>(null);
   const [defaultMood, setDefaultMood] = React.useState("dreamy");
-  const [defaultVoiceKey, setDefaultVoiceKey] = React.useState<VoiceKey>("gb_wavenet_d");
+  const [defaultVoiceKey, setDefaultVoiceKey] = React.useState<VoiceKey>("kore");
   const [sleepTimer, setSleepTimer] = React.useState("30");
 
   // Modal visibility states
@@ -136,7 +136,7 @@ export default function Settings() {
   const getMoodLabel = () =>
     MOOD_OPTIONS.find((o) => o.value === defaultMood)?.label || "Dreamy";
   const getVoiceLabel = () =>
-    VOICE_PACK[defaultVoiceKey]?.name || "London Night";
+    VOICE_PACK[defaultVoiceKey]?.name || "Kore";
   const getTimerLabel = () =>
     SLEEP_TIMER_OPTIONS.find((o) => o.value === sleepTimer)?.label || "30 min";
 
@@ -161,10 +161,11 @@ export default function Settings() {
             {photoURL ? (
               <Image
                 source={{ uri: photoURL }}
-                className="h-20 w-20 rounded-full border border-primary/30"
+                className="h-20 w-20 rounded-full border"
+                style={{ borderColor: colors.primary }}
               />
             ) : (
-              <View className="h-20 w-20 rounded-full bg-primary/20 items-center justify-center border border-primary/30">
+              <View className="h-20 w-20 rounded-full bg-primary/20 items-center justify-center border" style={{ borderColor: colors.primary }}>
                 <Text className="text-primary font-extrabold text-3xl">
                   {(user?.email?.[0] || "D").toUpperCase()}
                 </Text>
@@ -174,7 +175,7 @@ export default function Settings() {
               onPress={handleProfilePictureUpload}
               className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-primary items-center justify-center border border-border"
             >
-              <Ionicons name="pencil" size={16} color="white" />
+              <Ionicons name="pencil" size={16} color={colors.onPrimary} />
             </Pressable>
           </View>
 
@@ -197,7 +198,7 @@ export default function Settings() {
         <View className="mt-6 rounded-3xl border border-border bg-surface p-5">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-3">
-              <Ionicons name="diamond" size={18} color="#8e2de2" />
+              <Ionicons name="diamond" size={18} color={colors.primary} />
               <Text className="text-white text-3xl font-extrabold">{credits}</Text>
             </View>
             <Pressable>
@@ -209,8 +210,8 @@ export default function Settings() {
 
           <Pressable className="mt-4 rounded-2xl overflow-hidden">
             <View className="bg-primary px-5 py-4 items-center rounded-2xl flex-row justify-center gap-2">
-              <Ionicons name="add-circle-outline" size={20} color="white" />
-              <Text className="text-white font-extrabold text-base">Get More Credits</Text>
+              <Ionicons name="add-circle-outline" size={20} color={colors.onPrimary} />
+              <Text className="font-extrabold text-base" style={{ color: colors.onPrimary }}>Get More Credits</Text>
             </View>
           </Pressable>
         </View>
@@ -426,6 +427,7 @@ function SettingRow({
 // Diagnostic Section Component
 function DiagnosticSection({ voiceKey }: { voiceKey: VoiceKey }) {
   const { functions } = useFirebase();
+  const { colors } = useTheme();
   const [loading, setLoading] = React.useState(false);
   const [tests, setTests] = React.useState<any[]>([]);
   const [currentlyPlaying, setCurrentlyPlaying] = React.useState<number | null>(null);
@@ -506,7 +508,7 @@ function DiagnosticSection({ voiceKey }: { voiceKey: VoiceKey }) {
     <View className="rounded-3xl border border-border bg-surface p-5">
       <View className="flex-row items-center justify-between mb-3">
         <View className="flex-row items-center gap-2">
-          <Ionicons name="mic-outline" size={20} color="#8e2de2" />
+          <Ionicons name="mic-outline" size={20} color={colors.primary} />
           <Text className="text-white font-extrabold text-base">Voice Quality Tests</Text>
         </View>
         {tests.length > 0 && (
@@ -530,8 +532,8 @@ function DiagnosticSection({ voiceKey }: { voiceKey: VoiceKey }) {
             <Text className="text-white font-extrabold">Generating Tests...</Text>
           ) : (
             <View className="flex-row items-center gap-2">
-              <Ionicons name="flask-outline" size={18} color="white" />
-              <Text className="text-white font-extrabold">Generate Test Files</Text>
+              <Ionicons name="flask-outline" size={18} color={colors.onPrimary} />
+              <Text className="font-extrabold" style={{ color: colors.onPrimary }}>Generate Test Files</Text>
             </View>
           )}
         </Pressable>
@@ -568,7 +570,7 @@ function DiagnosticSection({ voiceKey }: { voiceKey: VoiceKey }) {
                   <Ionicons
                     name={currentlyPlaying === test.testNumber ? "pause" : "play"}
                     size={18}
-                    color="#7311d4"
+                    color={colors.primary}
                     style={{ marginLeft: currentlyPlaying === test.testNumber ? 0 : 2 }}
                   />
                 </View>

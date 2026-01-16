@@ -70,7 +70,7 @@ export default function PreferenceModal({
                         <View
                             className="h-1 w-full"
                             style={{
-                                backgroundColor: "#8e2de2",
+                                backgroundColor: colors.primary,
                             }}
                         />
 
@@ -84,7 +84,7 @@ export default function PreferenceModal({
                             </Pressable>
 
                             <View className="flex-row items-center gap-2">
-                                <Ionicons name={icon} size={18} color="#8e2de2" />
+                                <Ionicons name={icon} size={18} color={colors.primary} />
                                 <Text className="text-white text-xl font-extrabold">{title}</Text>
                             </View>
 
@@ -105,13 +105,8 @@ export default function PreferenceModal({
                                         onPress={() => handleSelect(option.value)}
                                         className={[
                                             "rounded-2xl border overflow-hidden mb-3",
-                                            active ? "border-primary/60" : "border-white/10",
+                                            active ? "border-primary/60 bg-primary/20" : "border-white/10 bg-white/5",
                                         ].join(" ")}
-                                        style={{
-                                            backgroundColor: active
-                                                ? "rgba(142, 45, 226, 0.12)"
-                                                : "rgba(255, 255, 255, 0.03)",
-                                        }}
                                     >
                                         <View className="p-4">
                                             <View className="flex-row items-center justify-between">
@@ -133,11 +128,10 @@ export default function PreferenceModal({
                                                 <View
                                                     className={[
                                                         "h-6 w-6 rounded-full border-2 items-center justify-center ml-3",
-                                                        active ? "border-primary" : "border-white/30",
+                                                        active ? "border-primary bg-primary" : "border-white/30",
                                                     ].join(" ")}
-                                                    style={active ? { backgroundColor: "#8e2de2" } : {}}
                                                 >
-                                                    {active && <Ionicons name="checkmark" size={14} color="white" />}
+                                                    {active && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
                                                 </View>
                                             </View>
                                         </View>

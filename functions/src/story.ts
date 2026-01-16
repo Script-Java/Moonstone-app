@@ -1,9 +1,9 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { admin, db, storage } from "./firebase";
 import { generateStoryText, StoryInputs } from "./gemini";
+import { GeminiVoiceKey, generateGeminiSpeech } from "./gemini-tts";
 import { VOICE_PACK, VoiceKey } from "./tts";
 import { hashInputs } from "./utils";
-import { generateGeminiSpeech, GeminiVoiceKey } from "./gemini-tts";
 
 const DEV_ALLOW_UNAUTH = false;
 
@@ -18,7 +18,11 @@ function normalizeGeminiVoiceKey(v: unknown): GeminiVoiceKey {
   return allowed.includes(key) ? key : "kore";
 }
 
-export const createStory = onCall({ cors: true, memory: "1GiB" }, async (request) => {
+export const createStory = onCall({
+  cors: true,  // Enable CORS for all origins
+  memory: "1GiB",
+  invoker: "public", // Ensure Cloud Run service is public (Callable handles auth)
+}, async (request) => {
   if (!DEV_ALLOW_UNAUTH && !request.auth) {
     throw new HttpsError("unauthenticated", "User must be logged in.");
   }
@@ -169,6 +173,16 @@ export const createStory = onCall({ cors: true, memory: "1GiB" }, async (request
       console.error("Credit refund failed:", refundErr);
     }
 
+    // Check if it's a rate limiting error
+    const msg = String(error?.message || "");
+    if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("429")) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "AI is busy right now. Please try again in 30-60 seconds."
+      );
+    }
+
+    // For all other errors, return internal with the message
     throw new HttpsError("internal", `Generation failed: ${error?.message || String(error)}`);
   }
 });

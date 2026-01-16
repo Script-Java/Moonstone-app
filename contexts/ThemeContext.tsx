@@ -1,6 +1,8 @@
 import { useFirebase } from "@/components/FirebaseStore";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { vars } from "nativewind";
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { View } from "react-native";
 
 export type ThemeType = "purple" | "midnight" | "obsidian" | "slate";
 
@@ -18,6 +20,7 @@ export interface ThemeColors {
 
     // Accent colors
     primary: string;
+    onPrimary: string;
     primary2: string;
     border: string;
 
@@ -36,6 +39,7 @@ const THEME_CONFIG: Record<ThemeType, ThemeColors> = {
         textMuted: "rgba(255,255,255,0.60)",
         textFaint: "rgba(255,255,255,0.35)",
         primary: "#7311d4",
+        onPrimary: "#ffffff",
         primary2: "#8e2de2",
         border: "rgba(255,255,255,0.10)",
         good: "#34d399",
@@ -50,6 +54,7 @@ const THEME_CONFIG: Record<ThemeType, ThemeColors> = {
         textMuted: "rgba(255,255,255,0.65)",
         textFaint: "rgba(255,255,255,0.40)",
         primary: "#3b82f6",
+        onPrimary: "#ffffff",
         primary2: "#60a5fa",
         border: "rgba(59,130,246,0.15)",
         good: "#34d399",
@@ -64,6 +69,7 @@ const THEME_CONFIG: Record<ThemeType, ThemeColors> = {
         textMuted: "rgba(255,255,255,0.70)",
         textFaint: "rgba(255,255,255,0.45)",
         primary: "#ffffff",
+        onPrimary: "#000000",
         primary2: "#e5e5e5",
         border: "rgba(255,255,255,0.08)",
         good: "#10b981",
@@ -78,6 +84,7 @@ const THEME_CONFIG: Record<ThemeType, ThemeColors> = {
         textMuted: "rgba(241,245,249,0.65)",
         textFaint: "rgba(241,245,249,0.40)",
         primary: "#94a3b8",
+        onPrimary: "#ffffff",
         primary2: "#cbd5e1",
         border: "rgba(148,163,184,0.15)",
         good: "#22c55e",
@@ -137,9 +144,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     const colors = THEME_CONFIG[theme] || THEME_CONFIG.purple;
 
+    const themeVars = {
+        "--color-primary": colors.primary,
+        "--color-on-primary": colors.onPrimary,
+        "--color-primary2": colors.primary2,
+    };
+
     return (
         <ThemeContext.Provider value={{ theme, colors, setTheme }}>
-            {children}
+            <View style={vars(themeVars)} className="flex-1">
+                {children}
+            </View>
         </ThemeContext.Provider>
     );
 }

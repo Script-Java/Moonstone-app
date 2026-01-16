@@ -54,6 +54,8 @@ export const GEMINI_VOICES: Record<string, GeminiVoiceConfig> = {
 
 export type GeminiVoiceKey = keyof typeof GEMINI_VOICES;
 
+
+
 export async function generateGeminiSpeech(
   text: string,
   voiceKey: GeminiVoiceKey = "kore"
@@ -61,7 +63,6 @@ export async function generateGeminiSpeech(
   const client = getTTSClient();
   const voice = GEMINI_VOICES[voiceKey] || GEMINI_VOICES.kore;
 
-  // Keep text safe-ish for TTS; avoid insanely long single requests
   const cleanText = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!cleanText) throw new Error("Empty text for TTS.");
 
@@ -69,15 +70,15 @@ export async function generateGeminiSpeech(
 
   try {
     const [response] = await client.synthesizeSpeech({
-      input: { text: cleanText },
+      input: { text: cleanText }, // ✅ Revert to plain text (Gemini TTS doesn't support SSML yet)
       voice: {
         languageCode: voice.languageCode,
         name: voice.voiceName,
-        modelName: GEMINI_TTS_MODEL, // ✅ REQUIRED for Gemini voices
+        modelName: GEMINI_TTS_MODEL,
       },
       audioConfig: {
         audioEncoding: "MP3",
-        speakingRate: 0.95,
+        speakingRate: 1.0,
         pitch: 0,
       },
     });

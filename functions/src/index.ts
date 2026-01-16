@@ -1,4 +1,8 @@
+import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall } from "firebase-functions/v2/https";
+
+setGlobalOptions({ region: "us-central1" });
+
 import { addToLibrary, deleteStory, toggleFavorite, updateProgress } from "./library";
 import { previewVoice } from "./preview";
 import { createStory } from "./story";

@@ -1,22 +1,25 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import Screen from "@/components/Screen";
-import LoadingScreen from "@/components/LoadingScreen";
-import SettingsModal, { StorySettings } from "@/components/SettingsModal";
-import Logo from "@/components/Logo";
 import ErrorDisplay from "@/components/ErrorDisplay";
+import LoadingScreen from "@/components/LoadingScreen";
+import Logo from "@/components/Logo";
+import Screen from "@/components/Screen";
+import SettingsModal, { StorySettings } from "@/components/SettingsModal";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { router } from "expo-router";
-import { httpsCallable } from "firebase/functions";
 import { useFirebase } from "@/components/FirebaseStore";
-import { doc, onSnapshot } from "firebase/firestore";
+import { router } from "expo-router";
 import { getAuth } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+
+import { useTheme } from "@/contexts/ThemeContext";
 
 type Mood = "Calm" | "Cozy" | "Romantic" | "Adventure";
 
 export default function Create() {
   const { functions, user, db } = useFirebase();
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(false);
   const [credits, setCredits] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -122,9 +125,13 @@ export default function Create() {
                 <Pressable
                   key={t}
                   onPress={() => removeTag(t)}
-                  className="flex-row items-center gap-2 rounded-2xl border border-primary/30 bg-primary/20 px-3 py-2"
+                  className="flex-row items-center gap-2 rounded-2xl border px-3 py-2"
+                  style={{
+                    backgroundColor: colors.primary + '33', // 20% opacity approx
+                    borderColor: colors.primary
+                  }}
                 >
-                  <Ionicons name="sparkles-outline" size={14} color="#8e2de2" />
+                  <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
                   <Text className="text-white font-extrabold">{t}</Text>
                   <Ionicons name="close" size={14} color="rgba(255,255,255,0.55)" />
                 </Pressable>
@@ -159,22 +166,26 @@ export default function Create() {
                   onPress={() => setMood(m.key)}
                   className={[
                     "w-[48%] rounded-2xl border p-4 mb-3",
-                    active ? "border-primary/70 bg-primary/15" : "border-border bg-surface",
+                    active ? "border-primary bg-primary" : "border-border bg-surface",
                   ].join(" ")}
                 >
                   <View className="flex-row items-center justify-between">
-                    <Ionicons name={m.icon} size={24} color={active ? "#8e2de2" : "rgba(255,255,255,0.55)"} />
-                    <View className={["h-5 w-5 rounded-full border items-center justify-center",
-                      active ? "border-primary/80 bg-primary/40" : "border-white/25"
-                    ].join(" ")}>
-                      {active ? <View className="h-2 w-2 rounded-full bg-white" /> : null}
+                    <Ionicons name={m.icon} size={24} color={active ? colors.onPrimary : "rgba(255,255,255,0.55)"} />
+                    <View
+                      className="h-5 w-5 rounded-full border items-center justify-center"
+                      style={{
+                        borderColor: active ? colors.onPrimary : "rgba(255,255,255,0.25)",
+                        backgroundColor: active ? "transparent" : "transparent"
+                      }}
+                    >
+                      {active ? <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors.onPrimary }} /> : null}
                     </View>
                   </View>
 
-                  <Text className={["mt-3 text-base font-extrabold", active ? "text-white" : "text-white/80"].join(" ")}>
+                  <Text className={["mt-3 text-base font-extrabold", active ? "" : "text-white/80"].join(" ")} style={active ? { color: colors.onPrimary } : {}}>
                     {m.key}
                   </Text>
-                  <Text className="mt-1 text-white/45 font-semibold text-xs">{m.sub}</Text>
+                  <Text className="mt-1 font-semibold text-xs" style={{ color: active ? colors.onPrimary : "rgba(255,255,255,0.45)" }}>{m.sub}</Text>
                 </Pressable>
               );
             })}
@@ -184,7 +195,7 @@ export default function Create() {
         {/* Credits + CTA */}
         <View className="mt-2 items-center">
           <View className="flex-row items-center gap-2 rounded-full border border-border bg-surface px-4 py-2">
-            <Ionicons name="sparkles" size={14} color="#8e2de2" />
+            <Ionicons name="sparkles" size={14} color={colors.primary} />
             <Text className="text-white/70 font-bold text-xs">{credits} {credits === 1 ? 'Credit' : 'Credits'} Remaining</Text>
           </View>
         </View>
@@ -192,6 +203,9 @@ export default function Create() {
         <Pressable
           disabled={loading}
           onPress={async () => {
+            // Prevent double submission
+            if (loading) return;
+
             if (!functions) {
               console.error("❌ Firebase Functions not initialized");
               setError("Firebase Functions not initialized. Check console.");
@@ -268,7 +282,13 @@ export default function Create() {
                 details: e.details,
                 stack: e.stack,
               });
-              setError(e.message || "Failed to generate story. Please try again.");
+
+              // Check if it's a rate limiting error
+              if (e.code === "functions/resource-exhausted") {
+                setError("We're a bit busy right now. Please try again in ~30 seconds.");
+              } else {
+                setError(e.message || "Failed to generate story. Please try again.");
+              }
             } finally {
               setLoading(false);
               console.log("✅ Story creation flow completed");
@@ -277,7 +297,7 @@ export default function Create() {
           className="mt-4 rounded-2xl overflow-hidden"
         >
           <View className={["px-5 py-4 items-center rounded-2xl", loading ? "bg-primary/50" : "bg-primary"].join(" ")}>
-            <Text className="text-white font-extrabold text-lg">
+            <Text className="font-extrabold text-lg" style={{ color: colors.onPrimary }}>
               {loading ? "Dreaming... (may take 20s)" : "Generate Story →"}
             </Text>
           </View>

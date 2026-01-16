@@ -1,40 +1,60 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, Pressable, ActivityIndicator, ScrollView } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useAudioPlayer } from "expo-audio";
 import { useFirebase } from "@/components/FirebaseStore";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { getStorage, ref, getDownloadURL } from "firebase/storage";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { getDownloadURL, getStorage, ref } from "firebase/storage";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 // Voice pack configuration (must match backend)
 export const VOICE_PACK = {
-    gb_wavenet_d: {
-        name: "London Night",
-        accent: "British",
-        gender: "male",
-        icon: "moon-outline" as const,
-    },
-    gb_wavenet_c: {
-        name: "Soft British",
-        accent: "British",
+    kore: {
+        name: "Kore",
+        accent: "American",
         gender: "female",
         icon: "rose-outline" as const,
+        description: "Warm, friendly",
     },
-    us_wavenet_d: {
-        name: "American Reader",
+    puck: {
+        name: "Puck",
+        accent: "American",
+        gender: "male",
+        icon: "moon-outline" as const,
+        description: "Young, energetic",
+    },
+    charon: {
+        name: "Charon",
         accent: "American",
         gender: "male",
         icon: "book-outline" as const,
+        description: "Mature, authoritative",
     },
-    us_wavenet_f: {
-        name: "Warm Narrator",
+    fenrir: {
+        name: "Fenrir",
+        accent: "American",
+        gender: "male",
+        icon: "planet-outline" as const,
+        description: "Deep, resonant",
+    },
+    aoede: {
+        name: "Aoede",
         accent: "American",
         gender: "female",
-        icon: "planet-outline" as const,
+        icon: "musical-notes-outline" as const,
+        description: "Melodic, soothing",
     },
 } as const;
 
 export type VoiceKey = keyof typeof VOICE_PACK;
+
+// Pre-generated preview MP3s in Firebase Storage
+const PREVIEW_PATHS: Record<VoiceKey, string> = {
+    kore: "previews/kore.mp3",
+    puck: "previews/puck.mp3",
+    charon: "previews/charon.mp3",
+    fenrir: "previews/fenrir.mp3",
+    aoede: "previews/aoede.mp3",
+};
 
 interface VoiceSelectorProps {
     selectedVoice: VoiceKey;
@@ -50,70 +70,131 @@ export default function VoiceSelector({
     onSetAsDefault,
 }: VoiceSelectorProps) {
     const { app } = useFirebase();
+    const { colors } = useTheme();
+
     const [previewingVoice, setPreviewingVoice] = useState<VoiceKey | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [shouldPlayPreview, setShouldPlayPreview] = useState(false);
 
-    // Use expo-audio instead of expo-av
-    const audioPlayer = useAudioPlayer(previewUrl ? { uri: previewUrl } : null);
+    // Cache preview URLs by voiceKey
+    const [urlCache, setUrlCache] = useState<Record<string, string>>({});
 
-    // Auto-stop when audio finishes
+
+
+    // Configure Audio Mode (essential for iOS silent mode)
     useEffect(() => {
-        if (audioPlayer && !audioPlayer.playing && audioPlayer.currentTime > 0) {
-            // Audio finished playing
-            setPreviewingVoice(null);
-        }
-    }, [audioPlayer?.playing, audioPlayer?.currentTime]);
-
-    const handlePreview = async (voiceKey: VoiceKey) => {
-        try {
-            // Stop any currently playing preview
-            if (audioPlayer) {
-                audioPlayer.pause();
+        const configureAudioMode = async () => {
+            try {
+                const { Audio } = await import("expo-av");
+                await Audio.setAudioModeAsync({
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: false, // Preview doesn't need background
+                    shouldDuckAndroid: true,
+                });
+            } catch (err) {
+                console.warn("Could not set audio mode for preview:", err);
             }
+        };
+        configureAudioMode();
+    }, []);
 
-            setPreviewingVoice(voiceKey);
+    // Player (expo-audio)
+    const source = useMemo(() => (previewUrl ? { uri: previewUrl } : null), [previewUrl]);
+    const audioPlayer = useAudioPlayer(source);
+    const audioStatus = useAudioPlayerStatus(audioPlayer);
 
-            // Call Cloud Function to get preview path
-            const functions = getFunctions(app!);
-            const previewVoiceFunc = httpsCallable<
-                { voiceKey: string },
-                { previewPath: string; cached: boolean }
-            >(functions, "previewVoice");
+    // Debug logs
+    useEffect(() => {
+        console.log("🎧 previewUrl changed:", previewUrl);
+    }, [previewUrl]);
 
-            const result = await previewVoiceFunc({ voiceKey });
-            const { previewPath } = result.data;
+    useEffect(() => {
+        console.log("🎧 audio status:", {
+            playing: audioStatus.playing,
+            buffering: audioStatus.isBuffering,
+            duration: audioStatus.duration,
+            currentTime: audioStatus.currentTime,
+        });
+    }, [audioStatus.playing, audioStatus.isBuffering, audioStatus.duration, audioStatus.currentTime]);
 
-            console.log(`🎵 Getting download URL for preview: ${previewPath}`);
+    // Auto-play when player is ready (triggered by user click via shouldPlayPreview)
+    useEffect(() => {
+        if (!audioPlayer) return;
+        if (!previewUrl) return;
+        if (!shouldPlayPreview) return;
 
-            // Get download URL using Firebase Storage SDK
-            const storage = getStorage(app!);
-            const audioRef = ref(storage, previewPath);
-            const url = await getDownloadURL(audioRef);
+        try {
+            audioPlayer.play();
+        } catch (e) {
+            console.warn("Could not auto-play preview:", e);
+        } finally {
+            // Consume the click intent
+            setShouldPlayPreview(false);
+        }
+    }, [audioPlayer, previewUrl, shouldPlayPreview]);
 
-            console.log(`✅ Playing preview for ${voiceKey}`);
 
-            // Set URL and play
-            setPreviewUrl(url);
 
-            // Small delay to ensure player is ready
-            setTimeout(() => {
-                if (audioPlayer) {
-                    audioPlayer.play();
-                }
-            }, 100);
-        } catch (error: any) {
-            console.error("Failed to preview voice:", error);
-            alert(`Preview failed: ${error.message || "Unknown error"}`);
+    // When playback ends, clear "previewing"
+    useEffect(() => {
+        // Guard: must have been playing and now stopped
+        if (!audioPlayer) return;
+
+        const finished =
+            !audioStatus.playing &&
+            (audioStatus.currentTime ?? 0) > 0 &&
+            (audioStatus.duration ?? 0) > 0 &&
+            (audioStatus.currentTime ?? 0) >= (audioStatus.duration ?? 0) - 0.1;
+
+        if (finished) {
             setPreviewingVoice(null);
+            setPreviewUrl(null);
         }
-    };
+    }, [audioStatus.playing, audioStatus.currentTime, audioStatus.duration, audioPlayer]);
 
+    // Stop preview helper
     const stopPreview = () => {
-        if (audioPlayer) {
-            audioPlayer.pause();
-        }
+        try {
+            audioPlayer?.pause?.();
+        } catch { }
+        setShouldPlayPreview(false);
         setPreviewUrl(null);
         setPreviewingVoice(null);
+    };
+
+    const handlePreview = async (voiceKey: VoiceKey) => {
+        if (previewingVoice === voiceKey) {
+            stopPreview();
+            return;
+        }
+
+        try {
+            stopPreview();
+            setPreviewingVoice(voiceKey);
+
+            let url = urlCache[voiceKey];
+
+            if (!url) {
+                const path = PREVIEW_PATHS[voiceKey];
+                if (!path) throw new Error(`Missing preview path for voice: ${voiceKey}`);
+                if (!app) throw new Error("Firebase app not ready");
+
+                const storage = getStorage(app);
+                const fileRef = ref(storage, path);
+                url = await getDownloadURL(fileRef);
+                setUrlCache((prev) => ({ ...prev, [voiceKey]: url }));
+            }
+
+            // Set URL and flag to play (effect will handle actual playback)
+            setShouldPlayPreview(true);
+            setPreviewUrl(url);
+        } catch (error: any) {
+            console.error("Failed to preview voice:", error);
+            Alert.alert("Preview failed", error?.message || "Could not load preview audio");
+            setPreviewingVoice(null);
+            setPreviewUrl(null);
+            setShouldPlayPreview(false);
+        }
     };
 
     return (
@@ -128,15 +209,23 @@ export default function VoiceSelector({
                     {(Object.keys(VOICE_PACK) as VoiceKey[]).map((voiceKey) => {
                         const voice = VOICE_PACK[voiceKey];
                         const isSelected = selectedVoice === voiceKey;
-                        const isPreviewing = previewingVoice === voiceKey;
+                        const isActive = previewingVoice === voiceKey;
+                        const isBusy = previewingVoice !== null && !isActive; // prevent multiple parallel previews
+
+                        const icon =
+                            voice.icon; // already typed as const
 
                         return (
                             <View
                                 key={voiceKey}
                                 className={[
                                     "rounded-2xl border p-4",
-                                    isSelected ? "border-primary/70 bg-primary/10" : "border-border bg-surface",
+                                    isSelected ? "border-primary bg-primary" : "border-border bg-surface",
                                 ].join(" ")}
+                                style={{
+                                    backgroundColor: isSelected ? colors.primary : colors.surface,
+                                    borderColor: isSelected ? colors.primary : colors.border
+                                }}
                             >
                                 <View className="flex-row items-center justify-between">
                                     {/* Voice Info */}
@@ -151,9 +240,9 @@ export default function VoiceSelector({
                                             ].join(" ")}
                                         >
                                             <Ionicons
-                                                name={voice.icon}
+                                                name={icon}
                                                 size={24}
-                                                color={isSelected ? "#8e2de2" : "rgba(255,255,255,0.5)"}
+                                                color={isSelected ? colors.onPrimary : "rgba(255,255,255,0.5)"}
                                             />
                                         </View>
 
@@ -161,32 +250,37 @@ export default function VoiceSelector({
                                             <Text
                                                 className={[
                                                     "font-extrabold text-base",
-                                                    isSelected ? "text-primary2" : "text-white",
                                                 ].join(" ")}
+                                                style={{ color: isSelected ? colors.onPrimary : "#ffffff" }}
                                             >
                                                 {voice.name}
                                             </Text>
-                                            <Text className="text-muted text-xs font-semibold mt-0.5">
-                                                {voice.accent} • {voice.gender}
+                                            <Text className="text-xs font-semibold mt-0.5" style={{ color: isSelected ? colors.onPrimary : "rgba(255,255,255,0.6)" }}>
+                                                {voice.description}
                                             </Text>
                                         </View>
                                     </Pressable>
 
                                     {/* Preview Button */}
                                     <Pressable
-                                        onPress={() => (isPreviewing ? stopPreview() : handlePreview(voiceKey))}
+                                        onPress={() => handlePreview(voiceKey)}
                                         className={[
                                             "px-4 py-2 rounded-full border",
-                                            isPreviewing
-                                                ? "border-primary bg-primary/20"
-                                                : "border-border bg-surface",
+                                            isActive ? "border-primary bg-primary/20" : "border-border bg-surface",
+                                            isBusy ? "opacity-60" : "",
                                         ].join(" ")}
-                                        disabled={previewingVoice !== null && !isPreviewing}
+                                        disabled={isBusy}
                                     >
-                                        {isPreviewing ? (
+                                        {isActive ? (
                                             <View className="flex-row items-center gap-2">
-                                                <ActivityIndicator size="small" color="#8e2de2" />
-                                                <Text className="text-primary2 font-extrabold text-xs">Playing</Text>
+                                                {audioStatus.isBuffering ? (
+                                                    <ActivityIndicator size="small" color={colors.primary} />
+                                                ) : (
+                                                    <Ionicons name="stop" size={14} color={colors.primary} />
+                                                )}
+                                                <Text className="text-primary2 font-extrabold text-xs">
+                                                    {audioStatus.isBuffering ? "Loading" : audioStatus.playing ? "Playing" : "Stop"}
+                                                </Text>
                                             </View>
                                         ) : (
                                             <View className="flex-row items-center gap-1">
@@ -201,7 +295,7 @@ export default function VoiceSelector({
                                 {isSelected && (
                                     <View className="mt-3 pt-3 border-t border-primary/20">
                                         <View className="flex-row items-center gap-2">
-                                            <Ionicons name="checkmark-circle" size={16} color="#8e2de2" />
+                                            <Ionicons name="checkmark-circle" size={16} color={colors.onPrimary} />
                                             <Text className="text-primary2 font-extrabold text-xs">Selected</Text>
                                         </View>
                                     </View>
@@ -217,7 +311,7 @@ export default function VoiceSelector({
                         onPress={onSetAsDefault}
                         className="mt-6 bg-primary/20 border border-primary/50 rounded-2xl p-4 flex-row items-center justify-center gap-2"
                     >
-                        <Ionicons name="save-outline" size={18} color="#8e2de2" />
+                        <Ionicons name="save-outline" size={18} color={colors.primary} />
                         <Text className="text-primary2 font-extrabold">Set as Default Voice</Text>
                     </Pressable>
                 )}

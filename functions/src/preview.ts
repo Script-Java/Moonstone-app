@@ -1,41 +1,46 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { storage } from "./firebase";
-import { generateVoicePreview, VOICE_PACK, VoiceKey } from "./tts";
+import { GEMINI_VOICES, GeminiVoiceKey, generateGeminiVoicePreview } from "./gemini-tts";
 
-export const previewVoice = onCall({ cors: true, memory: "512MiB" }, async (request) => {
+export const previewVoice = onCall({
+    cors: true,
+    memory: "512MiB",
+    invoker: "public"
+}, async (request) => {
     const { voiceKey } = request.data || {};
 
-    if (!voiceKey || !VOICE_PACK[voiceKey as VoiceKey]) {
+    // Validate against Gemini voices now
+    if (!voiceKey || !GEMINI_VOICES[voiceKey as GeminiVoiceKey]) {
         throw new HttpsError(
             "invalid-argument",
-            `Invalid voice key. Must be one of: ${Object.keys(VOICE_PACK).join(", ")}`
+            `Invalid voice key. Must be one of: ${Object.keys(GEMINI_VOICES).join(", ")}`
         );
     }
 
-    const typedVoiceKey = voiceKey as VoiceKey;
+    const typedVoiceKey = voiceKey as GeminiVoiceKey;
 
-    // Generate preview audio (returns { buffer, contentType, extension })
-    const audio = await generateVoicePreview(typedVoiceKey);
+    // Generate preview audio using Gemini TTS
+    const audioBuffer = await generateGeminiVoicePreview(typedVoiceKey);
 
     const bucket = storage.bucket();
-    const filePath = `previews/${typedVoiceKey}.${audio.extension}`;
+    // Use MP3 extension since Gemini TTS returns MP3
+    const filePath = `previews/${typedVoiceKey}.mp3`;
     const file = bucket.file(filePath);
 
     try {
         const [exists] = await file.exists();
 
         if (exists) {
-            const [url] = await file.getSignedUrl({
-                action: "read",
-                expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-            });
-            return { url, cached: true };
+            // File already exists, return public URL
+            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+            return { url: publicUrl, cached: true };
         }
 
-        await file.save(audio.buffer, {
+        // Save the file
+        await file.save(audioBuffer, {
             resumable: false,
             metadata: {
-                contentType: audio.contentType,
+                contentType: "audio/mpeg", // Always MP3 for Gemini
                 cacheControl: "public, max-age=86400",
                 metadata: {
                     voiceKey: typedVoiceKey,
@@ -44,12 +49,12 @@ export const previewVoice = onCall({ cors: true, memory: "512MiB" }, async (requ
             },
         });
 
-        const [url] = await file.getSignedUrl({
-            action: "read",
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        });
+        // Make the file publicly accessible (no auth required)
+        await file.makePublic();
 
-        return { url, cached: false };
+        // Return public URL (no signing needed)
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+        return { url: publicUrl, cached: false };
     } catch (error: any) {
         console.error(`❌ Failed to generate preview for ${voiceKey}:`, error);
         throw new HttpsError("internal", `Preview generation failed: ${error?.message || String(error)}`);
