@@ -1,4 +1,4 @@
-import { useTheme } from "@/contexts/ThemeContext";
+import { COLORS } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
@@ -18,7 +18,7 @@ export default function SupportModal({
     icon,
     content,
 }: SupportModalProps) {
-    const { colors } = useTheme();
+    // removed useTheme()
     if (!visible) return null;
 
     return (
@@ -45,9 +45,9 @@ export default function SupportModal({
                     importantForAccessibility="yes"
                 >
                     <View
-                        className="rounded-t-[32px] overflow-hidden"
+                        className="rounded-t-[32px] overflow-hidden flex-1"
                         style={{
-                            backgroundColor: colors.background,
+                            backgroundColor: COLORS.background,
                             maxHeight: "85%",
                         }}
                     >
@@ -55,7 +55,7 @@ export default function SupportModal({
                         <View
                             className="h-1 w-full"
                             style={{
-                                backgroundColor: "#8e2de2",
+                                backgroundColor: COLORS.primary,
                             }}
                         />
 
@@ -69,7 +69,7 @@ export default function SupportModal({
                             </Pressable>
 
                             <View className="flex-row items-center gap-2">
-                                <Ionicons name={icon} size={18} color="#8e2de2" />
+                                <Ionicons name={icon} size={18} color={COLORS.primary} />
                                 <Text className="text-white text-xl font-extrabold">{title}</Text>
                             </View>
 
@@ -78,9 +78,14 @@ export default function SupportModal({
 
                         {/* Content */}
                         <ScrollView
-                            className="px-6 py-6"
-                            contentContainerStyle={{ paddingBottom: 30 }}
-                            showsVerticalScrollIndicator={false}
+                            className="flex-1"
+                            contentContainerStyle={{
+                                paddingHorizontal: 24,
+                                paddingTop: 24,
+                                paddingBottom: 60
+                            }}
+                            showsVerticalScrollIndicator={true}
+                            bounces={true}
                         >
                             {content}
                         </ScrollView>

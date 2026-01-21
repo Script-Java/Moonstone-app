@@ -2,6 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+
+    /* Apply Inter font to text elements with optimal spacing */
+    body {
+        font-family: 'Inter_400Regular', sans-serif;
+        font-size: 16px;
+        line-height: 1.5;
+        letter-spacing: 0;
+    }
+
+    p {
+        font-family: 'Inter_400Regular', sans-serif;
+        line-height: 1.5;
+        letter-spacing: 0;
+    }
+
+    h1 {
+        font-family: 'Inter_600SemiBold', sans-serif;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+    }
+
+    h2 {
+        font-family: 'Inter_600SemiBold', sans-serif;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+    }
+
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-family: 'Inter_600SemiBold', sans-serif;
+        line-height: 1.4;
+        letter-spacing: 0;
+    }
+
+    span:not([class*="icon"]):not([class*="Icon"]) {
+        font-family: 'Inter_400Regular', sans-serif;
+    }
+
+    div:not([class*="icon"]):not([class*="Icon"]) {
+        font-family: 'Inter_400Regular', sans-serif;
+    }
+
+    button {
+        font-family: 'Inter_600SemiBold', sans-serif;
+        letter-spacing: 0.01em;
+    }
+
+    input,
+    textarea {
+        font-family: 'Inter_400Regular', sans-serif;
+        line-height: 1.5;
+    }
+
+    a {
+        font-family: 'Inter_500Medium', sans-serif;
+    }
+
+    label {
+        font-family: 'Inter_500Medium', sans-serif;
+        letter-spacing: 0.005em;
+    }
+
+    li {
+        font-family: 'Inter_400Regular', sans-serif;
+        line-height: 1.6;
+    }
+}
+
+
 :root {
     --background: #0a0118;
     --foreground: #ededed;

@@ -1,9 +1,17 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getAuth, Auth, onAuthStateChanged, User } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
-import { getFunctions, Functions } from "firebase/functions";
 import { firebaseConfig } from "@/constants/firebaseConfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
+import {
+    Auth,
+    getAuth,
+    getReactNativePersistence,
+    initializeAuth,
+    onAuthStateChanged,
+    User
+} from "firebase/auth";
+import { Firestore, getFirestore } from "firebase/firestore";
+import { Functions, getFunctions } from "firebase/functions";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 interface FirebaseContextType {
     app: FirebaseApp | null;
@@ -28,23 +36,37 @@ export const useFirebase = () => useContext(FirebaseContext);
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [initialized, setInitialized] = useState(false);
-
-    // Lazy init refs
     const [app, setApp] = useState<FirebaseApp | null>(null);
     const [auth, setAuth] = useState<Auth | null>(null);
     const [db, setDb] = useState<Firestore | null>(null);
     const [functions, setFunctions] = useState<Functions | null>(null);
 
     useEffect(() => {
-        // DEV MODE: Allow init even with placeholder
-        if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
-            console.warn("Using placeholder Firebase Config (Dev Mode)");
-        }
-
         try {
+            // Initialize App
             const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-            const firebaseAuth = getAuth(firebaseApp);
+
+            // Correct way to initialize Auth with AsyncStorage in React Native
+            let firebaseAuth: Auth;
+            if (getApps().length <= 1) {
+                try {
+                    firebaseAuth = initializeAuth(firebaseApp, {
+                        persistence: getReactNativePersistence(AsyncStorage)
+                    });
+                } catch (e: any) {
+                    // Check if error is because it's already initialized
+                    if (e.code === 'auth/already-initialized') {
+                        firebaseAuth = getAuth(firebaseApp);
+                    } else {
+                        // For other errors, fallback to getAuth but log
+                        console.warn("Auth init error, falling back:", e);
+                        firebaseAuth = getAuth(firebaseApp);
+                    }
+                }
+            } else {
+                firebaseAuth = getAuth(firebaseApp);
+            }
+
             const firebaseDb = getFirestore(firebaseApp);
             const firebaseFunctions = getFunctions(firebaseApp, "us-central1");
 
@@ -52,7 +74,6 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
             setAuth(firebaseAuth);
             setDb(firebaseDb);
             setFunctions(firebaseFunctions);
-            setInitialized(true);
 
             const unsubscribe = onAuthStateChanged(firebaseAuth, (u) => {
                 setUser(u);

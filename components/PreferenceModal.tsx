@@ -1,4 +1,4 @@
-import { useTheme } from "@/contexts/ThemeContext";
+import { COLORS } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
@@ -28,7 +28,7 @@ export default function PreferenceModal({
     selectedValue,
     onSelect,
 }: PreferenceModalProps) {
-    const { colors } = useTheme();
+    // removed useTheme()
     const handleSelect = (value: string) => {
         onSelect(value);
         onClose();
@@ -62,7 +62,7 @@ export default function PreferenceModal({
                     <View
                         className="rounded-t-[32px] overflow-hidden"
                         style={{
-                            backgroundColor: colors.background,
+                            backgroundColor: COLORS.background,
                             maxHeight: "75%",
                         }}
                     >
@@ -70,7 +70,7 @@ export default function PreferenceModal({
                         <View
                             className="h-1 w-full"
                             style={{
-                                backgroundColor: colors.primary,
+                                backgroundColor: COLORS.primary,
                             }}
                         />
 
@@ -84,7 +84,7 @@ export default function PreferenceModal({
                             </Pressable>
 
                             <View className="flex-row items-center gap-2">
-                                <Ionicons name={icon} size={18} color={colors.primary} />
+                                <Ionicons name={icon} size={18} color={COLORS.primary} />
                                 <Text className="text-white text-xl font-extrabold">{title}</Text>
                             </View>
 
@@ -131,7 +131,7 @@ export default function PreferenceModal({
                                                         active ? "border-primary bg-primary" : "border-white/30",
                                                     ].join(" ")}
                                                 >
-                                                    {active && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
+                                                    {active && <Ionicons name="checkmark" size={14} color={COLORS.onPrimary} />}
                                                 </View>
                                             </View>
                                         </View>

@@ -1,17 +1,15 @@
-import { useTheme } from "@/contexts/ThemeContext";
+import { COLORS } from "@/constants/colors";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
-import { View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Screen({ children }: { children: React.ReactNode }) {
-    const { colors } = useTheme();
-
     return (
         <LinearGradient
-            colors={[colors.background2, colors.background]}
+            colors={[COLORS.background2, COLORS.background]}
             style={{ flex: 1 }}
         >
-            <View className="flex-1">{children}</View>
+            <SafeAreaView style={{ flex: 1 }}>{children}</SafeAreaView>
         </LinearGradient>
     );
 }

@@ -1,5 +1,5 @@
 import VoiceSelector, { VoiceKey } from "@/components/VoiceSelector";
-import { useTheme } from "@/contexts/ThemeContext";
+import { COLORS } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -28,7 +28,7 @@ const storyLengths: { key: StoryLength; label: string; duration: string; descrip
 
 
 export default function SettingsModal({ visible, onClose, settings, onUpdateSettings }: SettingsModalProps) {
-    const { colors } = useTheme();
+    // removed useTheme()
     const [localSettings, setLocalSettings] = React.useState<StorySettings>(settings);
     const [voiceModalVisible, setVoiceModalVisible] = React.useState(false);
 
@@ -69,7 +69,7 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                     <View
                         className="rounded-t-[32px] overflow-hidden"
                         style={{
-                            backgroundColor: colors.background,
+                            backgroundColor: COLORS.background,
                             maxHeight: '85%',
                         }}
                     >
@@ -77,7 +77,7 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                         <View
                             className="h-1 w-full"
                             style={{
-                                backgroundColor: colors.primary,
+                                backgroundColor: COLORS.primary,
                             }}
                         />
 
@@ -91,7 +91,7 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                             </Pressable>
 
                             <View className="flex-row items-center gap-2">
-                                <Ionicons name="settings-sharp" size={18} color={colors.primary} />
+                                <Ionicons name="settings-sharp" size={18} color={COLORS.primary} />
                                 <Text className="text-white text-xl font-extrabold">Story Settings</Text>
                             </View>
 
@@ -99,10 +99,10 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                                 onPress={handleSave}
                                 className="px-5 py-2.5 rounded-full active:opacity-80"
                                 style={{
-                                    backgroundColor: colors.primary,
+                                    backgroundColor: COLORS.primary,
                                 }}
                             >
-                                <Text className="font-extrabold text-sm" style={{ color: colors.onPrimary }}>Save</Text>
+                                <Text className="font-extrabold text-sm" style={{ color: COLORS.onPrimary }}>Save</Text>
                             </Pressable>
                         </View>
 
@@ -115,8 +115,8 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                             {/* Story Length */}
                             <View className="mb-8">
                                 <View className="flex-row items-center gap-2 mb-4">
-                                    <Ionicons name="time-outline" size={16} color={colors.primary} />
-                                    <Text className="font-extrabold tracking-widest text-xs" style={{ color: colors.text }}>STORY LENGTH</Text>
+                                    <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+                                    <Text className="font-extrabold tracking-widest text-xs" style={{ color: COLORS.text }}>STORY LENGTH</Text>
                                 </View>
 
                                 {storyLengths.map((length, index) => {
@@ -130,33 +130,33 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                                                 active ? "border-primary bg-primary" : "border-white/10 bg-white/5",
                                             ].join(" ")}
                                             style={{
-                                                backgroundColor: active ? colors.primary : "rgba(255, 255, 255, 0.05)",
-                                                borderColor: active ? colors.primary : "rgba(255, 255, 255, 0.1)"
+                                                backgroundColor: active ? COLORS.primary : "rgba(255, 255, 255, 0.05)",
+                                                borderColor: active ? COLORS.primary : "rgba(255, 255, 255, 0.1)"
                                             }}
                                         >
                                             <View className="p-4">
                                                 <View className="flex-row items-center justify-between">
                                                     <View className="flex-1">
                                                         <View className="flex-row items-center gap-2 mb-1">
-                                                            <Text className={["text-lg font-extrabold"].join(" ")} style={{ color: active ? colors.onPrimary : "rgba(255,255,255,0.7)" }}>
+                                                            <Text className={["text-lg font-extrabold"].join(" ")} style={{ color: active ? COLORS.onPrimary : "rgba(255,255,255,0.7)" }}>
                                                                 {length.label}
                                                             </Text>
                                                             <View className={[
                                                                 "px-2.5 py-1 rounded-full",
                                                                 active ? "bg-black/20" : "bg-white/10"
                                                             ].join(" ")}>
-                                                                <Text className="font-extrabold text-xs" style={{ color: active ? colors.onPrimary : colors.text }}>{length.duration}</Text>
+                                                                <Text className="font-extrabold text-xs" style={{ color: active ? COLORS.onPrimary : COLORS.text }}>{length.duration}</Text>
                                                             </View>
                                                         </View>
-                                                        <Text className="font-semibold text-sm" style={{ color: active ? colors.onPrimary : "rgba(255,255,255,0.45)" }}>{length.description}</Text>
+                                                        <Text className="font-semibold text-sm" style={{ color: active ? COLORS.onPrimary : "rgba(255,255,255,0.45)" }}>{length.description}</Text>
                                                     </View>
                                                     <View className={[
                                                         "h-6 w-6 rounded-full border-2 items-center justify-center ml-3",
                                                         active ? "border-primary" : "border-white/30"
                                                     ].join(" ")}
-                                                        style={active ? { backgroundColor: colors.primary } : {}}
+                                                        style={active ? { backgroundColor: COLORS.primary } : {}}
                                                     >
-                                                        {active && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
+                                                        {active && <Ionicons name="checkmark" size={14} color={COLORS.onPrimary} />}
                                                     </View>
                                                 </View>
                                             </View>
@@ -168,8 +168,8 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                             {/* Narration Voice */}
                             <View className="mb-8">
                                 <View className="flex-row items-center gap-2 mb-4">
-                                    <Ionicons name="mic-outline" size={16} color={colors.primary} />
-                                    <Text className="font-extrabold tracking-widest text-xs" style={{ color: colors.text }}>NARRATION VOICE</Text>
+                                    <Ionicons name="mic-outline" size={16} color={COLORS.primary} />
+                                    <Text className="font-extrabold tracking-widest text-xs" style={{ color: COLORS.text }}>NARRATION VOICE</Text>
                                 </View>
 
                                 <Pressable
@@ -193,8 +193,8 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                             <View>
                                 <View className="flex-row items-center justify-between mb-4">
                                     <View className="flex-row items-center gap-2">
-                                        <Ionicons name="moon" size={16} color={colors.primary} />
-                                        <Text className="font-extrabold tracking-widest text-xs" style={{ color: colors.text }}>GOOD NIGHT MESSAGE</Text>
+                                        <Ionicons name="moon" size={16} color={COLORS.primary} />
+                                        <Text className="font-extrabold tracking-widest text-xs" style={{ color: COLORS.text }}>GOOD NIGHT MESSAGE</Text>
                                     </View>
                                     <Text className="text-primary/60 font-bold text-xs">{localSettings.goodNightMessage.length}/100</Text>
                                 </View>
@@ -236,7 +236,7 @@ export default function SettingsModal({ visible, onClose, settings, onUpdateSett
                 presentationStyle="pageSheet"
                 onRequestClose={() => setVoiceModalVisible(false)}
             >
-                <View style={{ flex: 1, backgroundColor: colors.background }}>
+                <View style={{ flex: 1, backgroundColor: COLORS.background }}>
                     <View className="flex-row items-center justify-between px-5 pt-5 pb-3">
                         <Pressable
                             onPress={() => setVoiceModalVisible(false)}

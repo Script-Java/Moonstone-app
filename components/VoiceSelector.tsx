@@ -1,5 +1,5 @@
 import { useFirebase } from "@/components/FirebaseStore";
-import { useTheme } from "@/contexts/ThemeContext";
+import { COLORS } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { getDownloadURL, getStorage, ref } from "firebase/storage";
@@ -70,7 +70,7 @@ export default function VoiceSelector({
     onSetAsDefault,
 }: VoiceSelectorProps) {
     const { app } = useFirebase();
-    const { colors } = useTheme();
+
 
     const [previewingVoice, setPreviewingVoice] = useState<VoiceKey | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -78,25 +78,6 @@ export default function VoiceSelector({
 
     // Cache preview URLs by voiceKey
     const [urlCache, setUrlCache] = useState<Record<string, string>>({});
-
-
-
-    // Configure Audio Mode (essential for iOS silent mode)
-    useEffect(() => {
-        const configureAudioMode = async () => {
-            try {
-                const { Audio } = await import("expo-av");
-                await Audio.setAudioModeAsync({
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: false, // Preview doesn't need background
-                    shouldDuckAndroid: true,
-                });
-            } catch (err) {
-                console.warn("Could not set audio mode for preview:", err);
-            }
-        };
-        configureAudioMode();
-    }, []);
 
     // Player (expo-audio)
     const source = useMemo(() => (previewUrl ? { uri: previewUrl } : null), [previewUrl]);
@@ -223,8 +204,8 @@ export default function VoiceSelector({
                                     isSelected ? "border-primary bg-primary" : "border-border bg-surface",
                                 ].join(" ")}
                                 style={{
-                                    backgroundColor: isSelected ? colors.primary : colors.surface,
-                                    borderColor: isSelected ? colors.primary : colors.border
+                                    backgroundColor: isSelected ? COLORS.primary : COLORS.surface,
+                                    borderColor: isSelected ? COLORS.primary : COLORS.border
                                 }}
                             >
                                 <View className="flex-row items-center justify-between">
@@ -242,7 +223,7 @@ export default function VoiceSelector({
                                             <Ionicons
                                                 name={icon}
                                                 size={24}
-                                                color={isSelected ? colors.onPrimary : "rgba(255,255,255,0.5)"}
+                                                color={isSelected ? COLORS.onPrimary : "rgba(255,255,255,0.5)"}
                                             />
                                         </View>
 
@@ -251,11 +232,11 @@ export default function VoiceSelector({
                                                 className={[
                                                     "font-extrabold text-base",
                                                 ].join(" ")}
-                                                style={{ color: isSelected ? colors.onPrimary : "#ffffff" }}
+                                                style={{ color: isSelected ? COLORS.onPrimary : "#ffffff" }}
                                             >
                                                 {voice.name}
                                             </Text>
-                                            <Text className="text-xs font-semibold mt-0.5" style={{ color: isSelected ? colors.onPrimary : "rgba(255,255,255,0.6)" }}>
+                                            <Text className="text-xs font-semibold mt-0.5" style={{ color: isSelected ? COLORS.onPrimary : "rgba(255,255,255,0.6)" }}>
                                                 {voice.description}
                                             </Text>
                                         </View>
@@ -274,9 +255,9 @@ export default function VoiceSelector({
                                         {isActive ? (
                                             <View className="flex-row items-center gap-2">
                                                 {audioStatus.isBuffering ? (
-                                                    <ActivityIndicator size="small" color={colors.primary} />
+                                                    <ActivityIndicator size="small" color={COLORS.primary} />
                                                 ) : (
-                                                    <Ionicons name="stop" size={14} color={colors.primary} />
+                                                    <Ionicons name="stop" size={14} color={COLORS.primary} />
                                                 )}
                                                 <Text className="text-primary2 font-extrabold text-xs">
                                                     {audioStatus.isBuffering ? "Loading" : audioStatus.playing ? "Playing" : "Stop"}
@@ -295,7 +276,7 @@ export default function VoiceSelector({
                                 {isSelected && (
                                     <View className="mt-3 pt-3 border-t border-primary/20">
                                         <View className="flex-row items-center gap-2">
-                                            <Ionicons name="checkmark-circle" size={16} color={colors.onPrimary} />
+                                            <Ionicons name="checkmark-circle" size={16} color={COLORS.onPrimary} />
                                             <Text className="text-primary2 font-extrabold text-xs">Selected</Text>
                                         </View>
                                     </View>
@@ -311,7 +292,7 @@ export default function VoiceSelector({
                         onPress={onSetAsDefault}
                         className="mt-6 bg-primary/20 border border-primary/50 rounded-2xl p-4 flex-row items-center justify-center gap-2"
                     >
-                        <Ionicons name="save-outline" size={18} color={colors.primary} />
+                        <Ionicons name="save-outline" size={18} color={COLORS.primary} />
                         <Text className="text-primary2 font-extrabold">Set as Default Voice</Text>
                     </Pressable>
                 )}

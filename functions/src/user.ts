@@ -8,6 +8,7 @@ export const onUserCreated = functions.auth.user().onCreate(async (user) => {
     await userRef.set({
         uid: user.uid,
         email: user.email || "",
+        displayName: user.displayName || "",
         credits: 3,
         createdAt: new Date(),
         isPremium: false

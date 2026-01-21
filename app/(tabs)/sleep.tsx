@@ -3,19 +3,25 @@ import Slider from "@react-native-community/slider";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ImageBackground, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  ImageBackground,
+  Modal,
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  View
+} from "react-native";
 
 import { useBedtimeMode } from "@/components/BedtimeModeContext";
 import BedtimeModeScreen from "@/components/BedtimeModeScreen";
 import { useFirebase } from "@/components/FirebaseStore";
-import Logo from "@/components/Logo";
 import Screen from "@/components/Screen";
-
-import { getAuth } from "firebase/auth";
+import { COLORS } from "@/constants/colors";
 import { doc, getDoc } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref } from "firebase/storage";
 
-// Ambient sound assets
 const AMBIENT_SOUNDS = {
   Rain: require("@/assets/audio/rain.mp3"),
   Ocean: require("@/assets/audio/ocean.mp3"),
@@ -27,14 +33,11 @@ type AmbienceKey = keyof typeof AMBIENT_SOUNDS;
 
 export default function Sleep() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
-  const { db, app } = useFirebase();
-  const { colors } = useTheme();
-
+  const { db, app, user } = useFirebase();
   const [story, setStory] = useState<any>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
 
-  // Mixer state
   const [ambience, setAmbience] = useState<AmbienceKey>("Rain");
   const [ambientEnabled, setAmbientEnabled] = useState(false);
   const [storyVolume, setStoryVolume] = useState(1.0);
@@ -42,91 +45,32 @@ export default function Sleep() {
 
   useEffect(() => {
     async function fetchStory() {
-      console.log("🔍 Sleep tab - checking for storyId:", storyId);
-
-      if (!storyId || !db) {
-        console.log("⚠️ Missing storyId or db:", { storyId, db: !!db });
-        setFetching(false);
-        return;
-      }
-
+      if (!storyId || !db) { setFetching(false); return; }
       setFetching(true);
-      console.log("📥 Fetching story from Firestore:", storyId);
-
       try {
         const docRef = doc(db, "stories", storyId);
         const snap = await getDoc(docRef);
-
-        if (!snap.exists()) {
-          console.error("❌ Story document not found in Firestore:", storyId);
-          alert("Story not found.");
-          setStory(null);
-          setAudioUrl(null);
-          return;
+        if (snap.exists()) {
+          const data = snap.data();
+          setStory(data);
+          if (data.audioPath) {
+            const storage = getStorage(app!);
+            const audioRef = ref(storage, data.audioPath);
+            const url = await getDownloadURL(audioRef);
+            setAudioUrl(url);
+          }
         }
-
-        const data = snap.data();
-        console.log("✅ Story fetched successfully:", {
-          id: storyId,
-          title: data.title,
-          hasAudioPath: !!data.audioPath,
-        });
-
-        setStory(data);
-
-        if (!data.audioPath) {
-          console.warn("⚠️ Story has no audioPath");
-          setAudioUrl(null);
-          return;
-        }
-
-        console.log("🎵 Fetching audio URL from storage:", data.audioPath);
-
-        // DEBUG: auth state
-        const auth = getAuth();
-        console.log("🔐 Auth state when loading audio:", {
-          currentUser: auth.currentUser?.uid,
-          email: auth.currentUser?.email,
-        });
-
-        // Extract UID from audioPath for comparison
-        const pathMatch = String(data.audioPath).match(/^audio\/([^\/]+)\//);
-        const audioUid = pathMatch ? pathMatch[1] : "unknown";
-
-        console.log("🔍 Permission check:", {
-          "AUTH UID": auth.currentUser?.uid || "NOT AUTHENTICATED",
-          "AUDIO UID (from path)": audioUid,
-          Match: auth.currentUser?.uid === audioUid ? "✅ YES" : "❌ NO - THIS WILL FAIL",
-        });
-
-        const storage = getStorage(app!);
-        const audioRef = ref(storage, data.audioPath);
-        const url = await getDownloadURL(audioRef);
-
-        console.log("✅ Audio URL fetched:", url.substring(0, 60) + "...");
-        setAudioUrl(url);
-      } catch (e: any) {
-        console.error("❌ Failed to load story:", e);
-        console.error("Error details:", {
-          message: e.message,
-          code: e.code,
-          stack: e.stack,
-        });
-        alert("Load Error: " + (e.message || "Unknown error"));
-      } finally {
-        setFetching(false);
-        console.log("✅ Story fetch completed");
-      }
+      } catch (e) { console.error("❌ Error:", e); } finally { setFetching(false); }
     }
-
     fetchStory();
-  }, [db, storyId, app]);
+  }, [db, storyId]);
 
   return (
     <Screen>
       {!story && !fetching ? (
-        <View className="flex-1 items-center justify-center p-5">
-          <Text className="text-white font-bold text-center">Select a story from your library.</Text>
+        <View className="flex-1 items-center justify-center p-10">
+          <Ionicons name="moon-outline" size={48} color="rgba(255,255,255,0.1)" />
+          <Text className="text-white/40 font-bold text-center mt-4">Choose a journey to begin.</Text>
         </View>
       ) : (
         <StoryPlayer
@@ -141,448 +85,192 @@ export default function Sleep() {
           ambientVolume={ambientVolume}
           setAmbientVolume={setAmbientVolume}
           loading={fetching}
-          colors={colors}
+          userName={user?.displayName?.split(' ')[0] || 'there'}
         />
       )}
     </Screen>
   );
 }
 
-import { ThemeColors, useTheme } from "@/contexts/ThemeContext";
-
-function StoryPlayer({
-  story,
-  audioUrl,
-  ambience,
-  setAmbience,
-  ambientEnabled,
-  setAmbientEnabled,
-  storyVolume,
-  setStoryVolume,
-  ambientVolume,
-  setAmbientVolume,
-  loading,
-  colors,
-}: {
-  story: any;
-  audioUrl: string | null;
-  ambience: AmbienceKey;
-  setAmbience: (a: AmbienceKey) => void;
-  ambientEnabled: boolean;
-  setAmbientEnabled: (enabled: boolean) => void;
-  storyVolume: number;
-  setStoryVolume: (volume: number) => void;
-  ambientVolume: number;
-  setAmbientVolume: (volume: number) => void;
-  loading: boolean;
-  colors: ThemeColors;
-}) {
-  const {
-    isActive: bedtimeModeActive,
-    sleepTimer,
-    sleepTimerRemaining,
-    setSleepTimer,
-    updateTimerRemaining,
-    activateBedtimeMode,
-  } = useBedtimeMode();
-
+function StoryPlayer({ story, audioUrl, ambience, setAmbience, ambientEnabled, setAmbientEnabled, storyVolume, setStoryVolume, ambientVolume, setAmbientVolume, loading, colors, theme, userName }: any) {
+  const { isActive: bedtimeModeActive, activateBedtimeMode, setSleepTimer } = useBedtimeMode();
   const [mixerModalVisible, setMixerModalVisible] = React.useState(false);
 
-  // iOS audio mode config (kept as you had it)
-  useEffect(() => {
-    const configureAudioMode = async () => {
-      try {
-        const { Audio } = await import("expo-av");
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: false,
-        });
-        console.log("✅ Audio mode configured");
-      } catch (err) {
-        console.warn("Could not set audio mode:", err);
-      }
-    };
-    configureAudioMode();
-  }, []);
-
-  // --- Story Audio Player ---
   const storySource = useMemo(() => (audioUrl ? { uri: audioUrl } : null), [audioUrl]);
   const storyPlayer = useAudioPlayer(storySource);
   const storyStatus = useAudioPlayerStatus(storyPlayer);
 
-  // --- Ambient Audio Players (Multi-player strategy for instant switching/no crosstalk) ---
-  const rainPlayer = useAudioPlayer(AMBIENT_SOUNDS.Rain);
-  const oceanPlayer = useAudioPlayer(AMBIENT_SOUNDS.Ocean);
-  const firePlayer = useAudioPlayer(AMBIENT_SOUNDS.Fire);
-  const forestPlayer = useAudioPlayer(AMBIENT_SOUNDS.Forest);
+  const ambientPlayers = {
+    Rain: useAudioPlayer(AMBIENT_SOUNDS.Rain),
+    Ocean: useAudioPlayer(AMBIENT_SOUNDS.Ocean),
+    Fire: useAudioPlayer(AMBIENT_SOUNDS.Fire),
+    Forest: useAudioPlayer(AMBIENT_SOUNDS.Forest),
+  };
 
-  // Map of keys to players
-  const ambientPlayers = useMemo(() => ({
-    Rain: rainPlayer,
-    Ocean: oceanPlayer,
-    Fire: firePlayer,
-    Forest: forestPlayer,
-  }), [rainPlayer, oceanPlayer, firePlayer, forestPlayer]);
-
-  // Apply volume and loop to ALL players (so they are ready)
   useEffect(() => {
-    Object.values(ambientPlayers).forEach(player => {
-      if (!player) return;
-      player.loop = true;
-      // If separate volume per channel is needed later, do it here. 
-      // For now, global ambient volume.
-      player.volume = ambientEnabled ? ambientVolume : 0;
-    });
-  }, [ambientPlayers, ambientVolume, ambientEnabled]);
-
-  // Master Control: Play active, Pause others
-  useEffect(() => {
+    if (storyPlayer) storyPlayer.volume = storyVolume;
     Object.entries(ambientPlayers).forEach(([key, player]) => {
       if (!player) return;
-
+      player.loop = true;
       const isActive = key === ambience;
-      const shouldPlay = isActive && ambientEnabled && storyStatus.playing;
-
-      if (shouldPlay) {
+      if (isActive && ambientEnabled && storyStatus.playing) {
+        player.volume = ambientVolume;
         player.play();
       } else {
         player.pause();
       }
     });
-  }, [ambientPlayers, ambientEnabled, storyStatus.playing, ambience]);
-
-  // Sleep Timer Countdown
-  useEffect(() => {
-    if (!sleepTimer || sleepTimerRemaining == null || sleepTimerRemaining <= 0) return;
-
-    const interval = setInterval(() => {
-      const newRemaining = sleepTimerRemaining - 1;
-      updateTimerRemaining(newRemaining);
-
-      if (newRemaining <= 0) {
-        handleTimerComplete();
-      } else if (newRemaining <= 30) {
-        const fadeProgress = newRemaining / 30;
-        try {
-          if (storyPlayer) storyPlayer.volume = fadeProgress;
-        } catch { }
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-    // IMPORTANT: keep same deps pattern you had (timerRemaining drives this)
-  }, [sleepTimer, sleepTimerRemaining]);
-
-  const handleTimerComplete = () => {
-    try {
-      if (storyPlayer) {
-        storyPlayer.pause();
-        storyPlayer.volume = 1;
-      }
-    } catch { }
-
-    // Optional: continue ambience briefly then fade out
-    // Optional: continue ambience briefly then fade out
-    try {
-      const activePlayer = ambientPlayers[ambience];
-      if (activePlayer && ambientEnabled) {
-        // Start fading the active player
-        activePlayer.volume = 0.2;
-
-        setTimeout(() => {
-          const ambientFadeInterval = setInterval(() => {
-            try {
-              if (activePlayer.volume > 0.05) {
-                activePlayer.volume = Math.max(0, activePlayer.volume - 0.01);
-              } else {
-                activePlayer.pause();
-                clearInterval(ambientFadeInterval);
-              }
-            } catch {
-              clearInterval(ambientFadeInterval);
-            }
-          }, 2400); // Slow fade over ~minutes
-        }, 180000); // Wait 3 mins before starting fade
-      }
-    } catch { }
-
-    setSleepTimer(null);
-  };
-
-  // Helpers
-  const togglePlay = () => {
-    if (!storyPlayer) return;
-    if (storyStatus.playing) storyPlayer.pause();
-    else storyPlayer.play();
-  };
+  }, [storyVolume, ambientVolume, ambientEnabled, storyStatus.playing, ambience]);
 
   const formatSeconds = (s: number) => {
-    if (!s || s < 0) return "0:00";
-    const totalSec = Math.floor(s);
+    const totalSec = Math.floor(s || 0);
     const min = Math.floor(totalSec / 60);
     const sec = totalSec % 60;
     return `${min}:${sec < 10 ? "0" + sec : sec}`;
   };
 
-  const currentSeconds = storyStatus.currentTime || 0;
-  const totalSeconds = storyStatus.duration || 0;
-  const timeLeftSec = Math.max(0, totalSeconds - currentSeconds);
-
-  const handleChangeSleepTimer = (minutes: number) => {
-    setSleepTimer(minutes);
-  };
-
   if (bedtimeModeActive) {
-    return (
-      <BedtimeModeScreen
-        currentAudioTitle={story?.title || "Audio"}
-        isPlaying={!!storyStatus.playing}
-        onTogglePlay={togglePlay}
-        onChangeSleepTimer={handleChangeSleepTimer}
-      />
-    );
+    return <BedtimeModeScreen currentAudioTitle={story?.title || "Audio"} isPlaying={!!storyStatus.playing} onTogglePlay={() => storyStatus.playing ? storyPlayer?.pause() : storyPlayer?.play()} onChangeSleepTimer={(m: number) => setSleepTimer(m)} />;
   }
 
   return (
-    <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 28 }}>
-      {/* Header */}
-      <View className="flex-row items-center justify-between mb-2">
-        <Logo size="small" glow={true} />
-        <Pressable
-          onPress={activateBedtimeMode}
-          className="flex-row items-center gap-2 rounded-full border border-border bg-surface px-4 py-2"
-        >
-          <Ionicons name="moon-outline" size={16} color="rgba(255,255,255,0.75)" />
-          <Text className="text-white/75 font-extrabold">Bedtime Mode</Text>
+    <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingTop: 30, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+
+      {/* --- HEADER --- */}
+      <View className="flex-row justify-between items-start mb-8">
+        <View className="flex-1">
+          <Text className="text-primary font-bold tracking-[3px] text-[10px] uppercase">Welcome, {userName}</Text>
+          <Text className="text-white text-4xl font-extrabold tracking-tight mt-1">Sweet Dreams</Text>
+        </View>
+        <Pressable onPress={activateBedtimeMode} className="mt-2 h-11 w-11 items-center justify-center rounded-full bg-surface border border-border">
+          <Ionicons name="moon-outline" size={20} color={COLORS.primary} />
         </Pressable>
       </View>
 
-      {/* Greeting */}
-      <Text className="text-white text-4xl font-extrabold mt-6">Sweet Dreams</Text>
-      <Text className="text-muted mt-2 text-base font-semibold">{story ? "Now Playing" : "Loading story..."}</Text>
-
-      {/* Player Card */}
-      <View className="mt-5 rounded-3xl border border-border bg-surface overflow-hidden">
-        <ImageBackground
-          source={{
-            uri: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=80",
-          }}
-          style={{ height: 320 }}
-        >
-          <View className="absolute inset-0 bg-black/45" />
-          <View className="flex-1 p-5 justify-end">
-            <View className="flex-row items-center gap-3">
-              <View className="bg-primary/70 px-3 py-2 rounded-xl">
-                <Text className="text-white font-extrabold text-xs">{storyStatus.playing ? "NOW PLAYING" : "PAUSED"}</Text>
+      {/* --- PLAYER CARD --- */}
+      <View className="rounded-[32px] border border-border bg-surface overflow-hidden mb-10 shadow-2xl">
+        <ImageBackground source={{ uri: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=80" }} style={{ height: 320 }}>
+          <View className="absolute inset-0 bg-black/40" />
+          <View className="flex-1 p-6 justify-end">
+            <View className="flex-row items-center justify-between mb-4">
+              <View className="bg-primary px-3 py-1 rounded-full">
+                <Text className="text-black font-bold text-[10px] tracking-widest uppercase">{storyStatus.playing ? "Flowing" : "Paused"}</Text>
               </View>
-              <Text className="text-white/70 font-bold">• {formatSeconds(timeLeftSec)} left</Text>
+              <Text className="text-white font-bold text-xs">{formatSeconds(storyStatus.duration - storyStatus.currentTime)} left</Text>
             </View>
-
-            {/* Playback Control */}
-            <View className="flex-row items-end justify-between mt-3">
-              <View className="flex-1 pr-3">
-                <Text className="text-white text-3xl font-extrabold" numberOfLines={1}>
-                  {story?.title || "Loading..."}
-                </Text>
-                <Text className="text-white/65 font-bold mt-1" numberOfLines={1}>
-                  {!story
-                    ? "Fetching story..."
-                    : storyStatus.isBuffering
-                      ? "Buffering audio..."
-                      : (story.mood || "Story") + " Story"}
-                </Text>
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1 mr-4">
+                <Text className="text-white text-3xl font-extrabold tracking-tight" numberOfLines={1}>{story?.title || "Preparing..."}</Text>
+                <Text className="text-white/60 font-bold text-sm mt-1 uppercase tracking-tighter">{story?.mood || "Deep"} Narrative</Text>
               </View>
-
-              {loading || !audioUrl ? (
-                <View className="h-16 w-16 rounded-full bg-white/20 items-center justify-center">
-                  <ActivityIndicator color="white" />
-                </View>
-              ) : (
-                <Pressable onPress={togglePlay} className="h-16 w-16 rounded-full bg-white items-center justify-center">
-                  <Ionicons
-                    name={storyStatus.playing ? "pause" : "play"}
-                    size={28}
-                    color={colors.primary}
-                    style={{ marginLeft: storyStatus.playing ? 0 : 2 }}
-                  />
-                </Pressable>
-              )}
+              <Pressable onPress={() => storyStatus.playing ? storyPlayer?.pause() : storyPlayer?.play()} disabled={loading || !audioUrl} className="h-16 w-16 rounded-full items-center justify-center bg-primary">
+                {loading ? <ActivityIndicator color="black" /> : <Ionicons name={storyStatus.playing ? "pause" : "play"} size={28} color="black" style={{ marginLeft: storyStatus.playing ? 0 : 4 }} />}
+              </Pressable>
             </View>
-
-            {/* Progress */}
-            <View className="mt-4 h-2 rounded-full bg-white/20 overflow-hidden">
-              <View
-                style={{ width: `${totalSeconds ? (currentSeconds / totalSeconds) * 100 : 0}%` }}
-                className="h-2 bg-primary rounded-full"
-              />
+            <View className="mt-6 h-1 rounded-full bg-white/20 overflow-hidden">
+              <View style={{ width: `${(storyStatus.currentTime / storyStatus.duration) * 100}%` }} className="h-full bg-primary" />
             </View>
           </View>
         </ImageBackground>
       </View>
 
-      {/* Soundscape */}
-      <View className="mt-6">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-white text-xl font-extrabold">Soundscape</Text>
+      {/* --- SOUNDSCAPE MASTER SWITCH --- */}
+      <View className="mb-6">
+        <Text className="text-primary font-bold tracking-[2px] text-[10px] uppercase mb-3 ml-1">Soundscape</Text>
+        <Pressable
+          onPress={() => setAmbientEnabled(!ambientEnabled)}
+          className={`flex-row items-center justify-between p-5 rounded-3xl border ${ambientEnabled ? 'bg-primary border-primary' : 'bg-surface border-border'}`}
+        >
+          <View className="flex-row items-center">
+            <View className={`h-10 w-10 rounded-full items-center justify-center ${ambientEnabled ? 'bg-black/10' : 'bg-primary/10'}`}>
+              <Ionicons name="sparkles-outline" size={20} color={ambientEnabled ? "black" : COLORS.primary} />
+            </View>
+            <Text className={`font-bold text-base ml-4 ${ambientEnabled ? 'text-black' : 'text-white'}`}>Ambient Audio</Text>
+          </View>
+          <Switch
+            value={ambientEnabled}
+            onValueChange={setAmbientEnabled}
+            trackColor={{ false: "#222", true: "rgba(0,0,0,0.1)" }}
+            thumbColor={ambientEnabled ? "white" : "#444"}
+          />
+        </Pressable>
+      </View>
 
-          {/* Toggle */}
-          <Pressable
-            onPress={() => setAmbientEnabled(!ambientEnabled)}
-            className={[
-              "px-4 py-2 rounded-full border",
-              ambientEnabled ? "border-primary/70 bg-primary/15" : "border-border bg-surface",
-            ].join(" ")}
-          >
-            <Text className={["font-extrabold", ambientEnabled ? "text-primary2" : "text-white/60"].join(" ")}>
-              {ambientEnabled ? "Ambient: ON" : "Ambient: OFF"}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Buttons */}
-        <View className="mt-3 flex-row justify-between">
+      {/* --- REFINED AMBIENT OPTIONS GRID (SMALLER BUTTONS) --- */}
+      <View className={`mb-6 ${!ambientEnabled && 'opacity-30'}`}>
+        <View className="flex-row flex-wrap justify-between">
           {(["Rain", "Ocean", "Fire", "Forest"] as const).map((s) => {
             const active = ambience === s;
-            const icon =
-              s === "Rain" ? "water-outline" : s === "Ocean" ? "pulse-outline" : s === "Fire" ? "flame-outline" : "leaf-outline";
-
+            const icons = { Rain: "water-outline", Ocean: "pulse-outline", Fire: "flame-outline", Forest: "leaf-outline" };
             return (
               <Pressable
                 key={s}
                 onPress={() => setAmbience(s)}
-                className={[
-                  "w-[23%] rounded-2xl border p-4 items-center",
-                  active ? "border-primary bg-primary" : "border-border bg-surface",
-                  !ambientEnabled ? "opacity-50" : "",
-                ].join(" ")}
                 disabled={!ambientEnabled}
+                // Reduced padding (p-3.5) and lower vertical margin (mb-3)
+                className={`w-[48%] rounded-2xl border p-3.5 mb-3 flex-row items-center ${active && ambientEnabled ? "border-primary bg-primary/10" : "border-border bg-surface"}`}
               >
-                <Ionicons name={icon as any} size={22} color={active ? colors.onPrimary : "rgba(255,255,255,0.55)"} />
-                <Text className={["mt-3 font-extrabold text-sm", active ? "" : "text-white/45"].join(" ")} style={active ? { color: colors.onPrimary } : {}}>
-                  {s}
-                </Text>
+                <Ionicons name={icons[s] as any} size={18} color={active && ambientEnabled ? COLORS.primary : "white"} />
+                <Text className={`ml-3 font-bold text-sm ${active && ambientEnabled ? "text-primary" : "text-white/60"}`}>{s}</Text>
               </Pressable>
             );
           })}
         </View>
+      </View>
 
-        {/* Mixer Settings Button */}
+      {/* --- MIXER ENTRY BUTTON --- */}
+      <View className={!ambientEnabled ? 'opacity-30' : ''}>
         <Pressable
           onPress={() => ambientEnabled && setMixerModalVisible(true)}
-          className={[
-            "mt-4 rounded-2xl border border-border bg-surface overflow-hidden",
-            !ambientEnabled ? "opacity-50" : ""
-          ].join(" ")}
+          className={`bg-surface rounded-3xl border border-border p-5 flex-row items-center justify-between`}
         >
-          <View className="p-4 flex-row items-center justify-between">
-            <View className="flex-row items-center gap-3">
-              <View className="h-10 w-10 rounded-full bg-primary/20 items-center justify-center">
-                <Ionicons name="options-outline" size={20} color={colors.primary} />
-              </View>
-              <View>
-                <Text className="text-white font-extrabold text-base">Mixer Settings</Text>
-                <Text className="text-white/50 font-semibold text-sm">
-                  {ambientEnabled ? "Adjust audio levels" : "Enable ambient to adjust"}
-                </Text>
-              </View>
+          <View className="flex-row items-center">
+            <View className="h-10 w-10 rounded-full bg-primary/10 items-center justify-center">
+              <Ionicons name="options-outline" size={20} color={COLORS.primary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.35)" />
+            <View className="ml-4">
+              <Text className="text-white font-bold text-base">Mixer Settings</Text>
+              <Text className="text-white/40 text-xs font-semibold">Fine-tune audio levels</Text>
+            </View>
           </View>
+          <Ionicons name="chevron-forward" size={18} color="white" />
         </Pressable>
       </View>
 
-      {/* Mixer Modal */}
-      <Modal
-        visible={mixerModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setMixerModalVisible(false)}
-        statusBarTranslucent
-      >
-        <Pressable
-          onPress={() => setMixerModalVisible(false)}
-          className="flex-1 bg-black/70"
-          style={{ backgroundColor: "rgba(0, 0, 0, 0.7)" }}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="flex-1 justify-end"
-          >
-            <View
-              className="rounded-t-[32px] overflow-hidden"
-              style={{ backgroundColor: "#0a0a0f", maxHeight: "55%" }}
-            >
-              {/* Border */}
-              <View className="h-1 w-full" style={{ backgroundColor: colors.primary }} />
+      {/* --- MIXER MODAL --- */}
+      <Modal visible={mixerModalVisible} animationType="slide" transparent={true}>
+        <View className="flex-1 justify-end bg-black/90">
+          <View className="rounded-t-[40px] border-t border-primary/20 p-8 pb-14" style={{ backgroundColor: '#0A0A0A' }}>
+            <View className="h-1 w-12 bg-white/10 rounded-full self-center mb-8" />
 
-              {/* Header */}
-              <View className="flex-row items-center justify-between px-6 py-5 border-b border-white/10">
-                <Pressable
-                  onPress={() => setMixerModalVisible(false)}
-                  className="h-10 w-10 rounded-full items-center justify-center bg-white/5"
-                >
-                  <Ionicons name="close" size={22} color="rgba(255,255,255,0.9)" />
-                </Pressable>
-
-                <View className="flex-row items-center gap-2">
-                  <Ionicons name="options" size={18} color={colors.primary} />
-                  <Text className="text-white text-xl font-extrabold">Mixer Settings</Text>
-                </View>
-
-                <View className="h-10 w-10" />
+            <View className="flex-row justify-between items-center mb-10">
+              <View>
+                <Text className="text-white text-3xl font-extrabold">Mixer</Text>
+                {/* Lighter subtext color (text-white/50) for better visibility */}
+                <Text className="text-white/50 font-bold text-[10px] tracking-[2px] uppercase mt-1">Adjust Atmosphere</Text>
               </View>
-
-              {/* Content */}
-              <View className="p-6">
-                {/* Story Volume */}
-                <View>
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-white font-extrabold">Story Volume</Text>
-                    <Text className="text-white/60 font-bold">{Math.round(storyVolume * 100)}%</Text>
-                  </View>
-                  <Slider
-                    value={storyVolume}
-                    onValueChange={setStoryVolume}
-                    minimumValue={0}
-                    maximumValue={1}
-                    step={0.01}
-                    minimumTrackTintColor={colors.primary}
-                    maximumTrackTintColor="rgba(255,255,255,0.2)"
-                    thumbTintColor="#ffffff"
-                  />
-                </View>
-
-                {/* Ambient Volume */}
-                <View className="mt-8">
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-white font-extrabold">Ambient Volume</Text>
-                    <Text className="text-white/60 font-bold">
-                      {ambientEnabled ? `${Math.round(ambientVolume * 100)}%` : "OFF"}
-                    </Text>
-                  </View>
-                  <Slider
-                    value={ambientVolume}
-                    onValueChange={setAmbientVolume}
-                    minimumValue={0}
-                    maximumValue={1}
-                    step={0.01}
-                    disabled={!ambientEnabled}
-                    minimumTrackTintColor="#8e2de2"
-                    maximumTrackTintColor="rgba(255,255,255,0.2)"
-                    thumbTintColor="#ffffff"
-                    style={{ opacity: ambientEnabled ? 1 : 0.5 }}
-                  />
-                  {!ambientEnabled && (
-                    <Text className="text-white/40 text-xs mt-3">
-                      Enable ambient sounds to adjust volume
-                    </Text>
-                  )}
-                </View>
-              </View>
+              <Pressable onPress={() => setMixerModalVisible(false)} className="h-12 w-12 rounded-full bg-white/5 items-center justify-center border border-white/10">
+                <Ionicons name="close" size={24} color="white" />
+              </Pressable>
             </View>
-          </Pressable>
-        </Pressable>
+
+            <View className="mb-12">
+              <View className="flex-row justify-between items-center mb-5">
+                <Text className="text-white font-bold uppercase tracking-widest text-[11px]">Story Volume</Text>
+                <Text className="text-white font-extrabold text-sm">{Math.round(storyVolume * 100)}%</Text>
+              </View>
+              <Slider value={storyVolume} onValueChange={setStoryVolume} minimumTrackTintColor={COLORS.primary} maximumTrackTintColor="rgba(255,255,255,0.1)" thumbTintColor="white" />
+            </View>
+
+            <View className="mb-8">
+              <View className="flex-row justify-between items-center mb-5">
+                <Text className="text-white font-bold uppercase tracking-widest text-[11px]">Ambient Level</Text>
+                <Text className="text-white font-extrabold text-sm">{Math.round(ambientVolume * 100)}%</Text>
+              </View>
+              <Slider value={ambientVolume} onValueChange={setAmbientVolume} minimumTrackTintColor={COLORS.primary} maximumTrackTintColor="rgba(255,255,255,0.1)" thumbTintColor="white" />
+            </View>
+          </View>
+        </View>
       </Modal>
     </ScrollView>
   );

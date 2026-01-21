@@ -1,11 +1,11 @@
-import React from "react";
 import { Stack } from "expo-router";
-import { OnboardingProvider } from "@/components/OnboardingStore";
 
 export default function OnboardingLayout() {
     return (
-        <OnboardingProvider>
-            <Stack screenOptions={{ headerShown: false }} />
-        </OnboardingProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="survey" />
+            <Stack.Screen name="auth" />
+        </Stack>
     );
 }
