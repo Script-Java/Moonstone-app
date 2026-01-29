@@ -63,7 +63,7 @@ export default function Settings() {
       setIsPremium(data?.isPremium || false);
       setPhotoURL(data?.photoURL || null);
       setDefaultMood(data?.defaultMood || "dreamy");
-      setDefaultVoiceKey(data?.defaultVoiceKey || "gb_wavenet_d");
+      setDefaultVoiceKey(data?.defaultVoiceKey || "kore");
       setSleepTimer(String(data?.sleepTimer || 30));
     });
   }, [user, db]);

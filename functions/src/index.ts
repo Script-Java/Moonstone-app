@@ -4,8 +4,8 @@ setGlobalOptions({ region: "us-central1" });
 
 import { addToLibrary, deleteStory, toggleFavorite, updateProgress } from "./library";
 import { previewVoice } from "./preview";
-import { createStory } from "./story";
+import { createStory, generateStoryAudio } from "./story";
 
 export * from "./user";
-export { addToLibrary, createStory, deleteStory, previewVoice, toggleFavorite, updateProgress };
+export { addToLibrary, createStory, deleteStory, generateStoryAudio, previewVoice, toggleFavorite, updateProgress };
 

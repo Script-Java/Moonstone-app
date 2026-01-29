@@ -3,6 +3,12 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
+    // usage: audio/shared/{storyHash}.mp3
+    match /audio/shared/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only cloud functions
+    }
+
     // User audio: only owner can read/write
     // Path: audio/{uid}/{storyId}.wav (NOT audio/users/{uid}/...)
     match /audio/{uid}/{allPaths=**} {

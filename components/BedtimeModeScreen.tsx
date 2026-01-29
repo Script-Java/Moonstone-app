@@ -18,7 +18,7 @@ export default function BedtimeModeScreen({
     onTogglePlay,
     onChangeSleepTimer,
 }: BedtimeModeScreenProps) {
-    const { controlsVisible, showControls, hideControls, deactivateBedtimeMode, sleepTimer, setSleepTimer } = useBedtimeMode();
+    const { controlsVisible, showControls, hideControls, deactivateBedtimeMode, sleepTimer, setSleepTimer, dimmingLevel, smartLoopPhase, wakeUpTime, setWakeUpTime } = useBedtimeMode();
 
     // Animation values
     const controlsOpacity = useRef(new Animated.Value(0)).current;
@@ -80,33 +80,68 @@ export default function BedtimeModeScreen({
         setShowTimerModal(false);
     };
 
+    // Quick Wake Up Time Setter for Demo (Set for 8 hours from now or 1 min for demo?)
+    // Real implementation would need a DatePicker.
+    // Let's toggle valid wake up time for demo purposes.
+    const toggleWakeUp = () => {
+        if (wakeUpTime) {
+            setWakeUpTime(null);
+        } else {
+            // Set for 2 minutes from now for testing "Morning Hand-off"
+            const d = new Date();
+            d.setMinutes(d.getMinutes() + 2);
+            setWakeUpTime(d);
+        }
+    };
+
     const handleExitBedtimeMode = () => {
         deactivateBedtimeMode();
     };
+
+    // determine background color
+    // "Sunrise Gold" = #fdfbd4 (or slightly darker for bg, maybe a warm orange/gold gradient?)
+    // Request says: shift text to #fdfbd4, and screen to soft "Sunrise Gold".
+    // Let's use a soft goldish background color.
+    const bgColor = smartLoopPhase === 'wakeup' ? '#4a3b10' : '#0a0a0a'; // Dark gold vs true black
 
     return (
         <Pressable
             onPress={handleScreenTap}
             style={{
                 flex: 1,
-                backgroundColor: 'hsl(220, 15%, 8%)',
+                backgroundColor: bgColor,
                 justifyContent: 'center',
                 alignItems: 'center',
             }}
         >
+            {/* Adaptive Dimming Overlay */}
+            <View
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'black',
+                    opacity: dimmingLevel,
+                    pointerEvents: 'none', // Allow clicks to pass through
+                    zIndex: 10,
+                }}
+            />
+
             {/* Dimmed Audio Title (always visible but very subtle) */}
-            <View style={{ position: 'absolute', top: '40%', alignItems: 'center' }}>
-                <Text style={{ color: 'rgba(249, 250, 251, 0.15)', fontSize: 16, fontWeight: '500' }}>
-                    {currentAudioTitle}
+            <View style={{ position: 'absolute', top: '40%', alignItems: 'center', zIndex: 1 }}>
+                <Text style={{ color: '#fdfbd4', opacity: 0.15, fontSize: 16, fontWeight: '500' }}>
+                    {currentAudioTitle} ({smartLoopPhase})
                 </Text>
             </View>
 
             {/* Subtle Play/Pause Button (always visible but dimmed) */}
-            <View style={{ opacity: controlsVisible ? 0 : 0.15 }}>
+            <View style={{ opacity: controlsVisible ? 0 : 0.15, zIndex: 1 }}>
                 <Ionicons
                     name={isPlaying ? 'pause' : 'play'}
                     size={32}
-                    color="rgba(249, 250, 251, 1)"
+                    color="#fdfbd4"
                 />
             </View>
 
@@ -118,6 +153,7 @@ export default function BedtimeModeScreen({
                     justifyContent: 'center',
                     alignItems: 'center',
                     pointerEvents: controlsVisible ? 'auto' : 'none',
+                    zIndex: 20, // Abvoe dimming layer for interaction
                 }}
             >
                 {/* Play/Pause Button */}
@@ -127,7 +163,7 @@ export default function BedtimeModeScreen({
                         width: 80,
                         height: 80,
                         borderRadius: 40,
-                        backgroundColor: 'rgba(249, 250, 251, 1)',
+                        backgroundColor: '#fdfbd4',
                         justifyContent: 'center',
                         alignItems: 'center',
                     }}
@@ -135,7 +171,7 @@ export default function BedtimeModeScreen({
                     <Ionicons
                         name={isPlaying ? 'pause' : 'play'}
                         size={32}
-                        color="#000"
+                        color="#0a0a0a"
                         style={{ marginLeft: isPlaying ? 0 : 3 }}
                     />
                 </Pressable>
@@ -149,17 +185,31 @@ export default function BedtimeModeScreen({
                         height: 60,
                         borderRadius: 30,
                         borderWidth: 1.5,
-                        borderColor: 'rgba(249, 250, 251, 0.3)',
-                        backgroundColor: 'rgba(249, 250, 251, 0.1)',
+                        borderColor: 'rgba(253, 251, 212, 0.3)',
+                        backgroundColor: 'rgba(253, 251, 212, 0.1)',
                         justifyContent: 'center',
                         alignItems: 'center',
                     }}
                 >
-                    <Text style={{ color: 'rgba(249, 250, 251, 0.75)', fontSize: 14, fontWeight: '500', marginBottom: 2 }}>
+                    <Text style={{ color: 'rgba(253, 251, 212, 0.75)', fontSize: 14, fontWeight: '500', marginBottom: 2 }}>
                         Sleep Timer
                     </Text>
-                    <Text style={{ color: 'rgba(249, 250, 251, 1)', fontSize: 24, fontWeight: '300' }}>
+                    <Text style={{ color: '#fdfbd4', fontSize: 24, fontWeight: '300' }}>
                         {sleepTimer ? `${sleepTimer} min` : 'Off'}
+                    </Text>
+                </Pressable>
+
+                {/* Wake Up (Morning Hand-off) Button */}
+                <Pressable
+                    onPress={toggleWakeUp}
+                    style={{
+                        marginTop: 16,
+                        paddingVertical: 12,
+                        paddingHorizontal: 24,
+                    }}
+                >
+                    <Text style={{ color: 'rgba(253, 251, 212, 0.5)', fontSize: 14, fontWeight: '500' }}>
+                        {wakeUpTime ? `Wake Up: ${wakeUpTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Set Morning Alarm'}
                     </Text>
                 </Pressable>
 
@@ -167,12 +217,12 @@ export default function BedtimeModeScreen({
                 <Pressable
                     onPress={handleExitBedtimeMode}
                     style={{
-                        marginTop: 32,
+                        marginTop: 16,
                         paddingVertical: 12,
                         paddingHorizontal: 24,
                     }}
                 >
-                    <Text style={{ color: 'rgba(249, 250, 251, 0.35)', fontSize: 16, fontWeight: '500' }}>
+                    <Text style={{ color: 'rgba(253, 251, 212, 0.35)', fontSize: 16, fontWeight: '500' }}>
                         Exit Bedtime Mode
                     </Text>
                 </Pressable>
@@ -188,22 +238,25 @@ export default function BedtimeModeScreen({
                         left: 0,
                         right: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
                         justifyContent: 'center',
                         alignItems: 'center',
+                        zIndex: 30,
                     }}
                 >
                     <Pressable
                         onPress={(e) => e.stopPropagation()}
                         style={{
                             width: SCREEN_WIDTH * 0.85,
-                            backgroundColor: 'hsl(220, 15%, 18%)',
+                            backgroundColor: '#1a1a1a',
                             borderRadius: 24,
                             padding: 32,
                             alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: 'rgba(253, 251, 212, 0.1)',
                         }}
                     >
-                        <Text style={{ color: 'rgba(249, 250, 251, 0.9)', fontSize: 20, fontWeight: '600', marginBottom: 24 }}>
+                        <Text style={{ color: '#fdfbd4', fontSize: 20, fontWeight: '600', marginBottom: 24 }}>
                             Sleep Timer
                         </Text>
 
@@ -218,24 +271,24 @@ export default function BedtimeModeScreen({
                                         height: 90,
                                         borderRadius: 45,
                                         borderWidth: sleepTimer === minutes ? 2 : 1.5,
-                                        borderColor: sleepTimer === minutes ? 'rgba(249, 250, 251, 0.8)' : 'rgba(249, 250, 251, 0.25)',
-                                        backgroundColor: sleepTimer === minutes ? 'rgba(249, 250, 251, 0.15)' : 'rgba(249, 250, 251, 0.05)',
+                                        borderColor: sleepTimer === minutes ? '#fdfbd4' : 'rgba(253, 251, 212, 0.25)',
+                                        backgroundColor: sleepTimer === minutes ? 'rgba(253, 251, 212, 0.15)' : 'rgba(253, 251, 212, 0.05)',
                                         justifyContent: 'center',
                                         alignItems: 'center',
                                     }}
                                 >
-                                    <Ionicons name="time-outline" size={20} color="rgba(249, 250, 251, 0.6)" />
-                                    <Text style={{ color: 'rgba(249, 250, 251, 0.9)', fontSize: 24, fontWeight: '400', marginTop: 4 }}>
+                                    <Ionicons name="time-outline" size={20} color="rgba(253, 251, 212, 0.6)" />
+                                    <Text style={{ color: '#fdfbd4', fontSize: 24, fontWeight: '400', marginTop: 4 }}>
                                         {minutes}
                                     </Text>
-                                    <Text style={{ color: 'rgba(249, 250, 251, 0.5)', fontSize: 12, fontWeight: '500' }}>
+                                    <Text style={{ color: 'rgba(253, 251, 212, 0.5)', fontSize: 12, fontWeight: '500' }}>
                                         min
                                     </Text>
                                 </Pressable>
                             ))}
                         </View>
 
-                        <Text style={{ color: 'rgba(249, 250, 251, 0.45)', fontSize: 14, fontWeight: '500', textAlign: 'center' }}>
+                        <Text style={{ color: 'rgba(253, 251, 212, 0.45)', fontSize: 14, fontWeight: '500', textAlign: 'center' }}>
                             Audio will fade out gently
                         </Text>
                     </Pressable>

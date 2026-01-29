@@ -20,57 +20,67 @@ export interface GeminiVoiceConfig {
 }
 
 export const GEMINI_VOICES: Record<string, GeminiVoiceConfig> = {
+  aoede: {
+    name: "Aoede",
+    voiceName: "Aoede",
+    languageCode: "en-US",
+    description: "The Sleep Standard: Ethereal, breathy, and calm.",
+  },
   kore: {
     name: "Kore",
     voiceName: "Kore",
     languageCode: "en-US",
-    description: "Warm, friendly female voice",
+    description: "The Caretaker: Warm, friendly, and comforting.",
   },
   puck: {
     name: "Puck",
     voiceName: "Puck",
     languageCode: "en-US",
-    description: "Young, energetic male voice",
+    description: "The Storyteller: Young, energetic, and engaging.",
   },
   charon: {
     name: "Charon",
     voiceName: "Charon",
     languageCode: "en-US",
-    description: "Mature, authoritative male voice",
+    description: "The Guide: Mature, authoritative, and steady.",
   },
   fenrir: {
     name: "Fenrir",
     voiceName: "Fenrir",
     languageCode: "en-US",
-    description: "Deep, resonant male voice",
-  },
-  aoede: {
-    name: "Aoede",
-    voiceName: "Aoede",
-    languageCode: "en-US",
-    description: "Melodic, soothing female voice",
+    description: "The Anchor: Deep, resonant, and grounding.",
   },
 };
 
 export type GeminiVoiceKey = keyof typeof GEMINI_VOICES;
 
-
+// Compatibility alias for the rest of the app
+export const VOICE_PACK = GEMINI_VOICES;
+export type VoiceKey = GeminiVoiceKey;
 
 export async function generateGeminiSpeech(
   text: string,
-  voiceKey: GeminiVoiceKey = "kore"
+  voiceKey: GeminiVoiceKey = "aoede"
 ): Promise<Buffer> {
   const client = getTTSClient();
-  const voice = GEMINI_VOICES[voiceKey] || GEMINI_VOICES.kore;
+  const voice = GEMINI_VOICES[voiceKey] || GEMINI_VOICES.aoede;
 
-  const cleanText = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (!cleanText) throw new Error("Empty text for TTS.");
+  // ELITE NARRATION HACK: 
+  // We replace periods with double-periods or ellipses to force the model 
+  // to take a longer "breath" and lower its pitch at the end of thoughts.
+  const processedText = String(text ?? "")
+    .replace(/\. /g, "...  ") // Force a long pause + pitch drop
+    .replace(/\? /g, "...  ") // Turn questions into soft statements
+    .replace(/, /g, ",  ")    // Add a micro-gap after commas
+    .trim();
+
+  if (!processedText) throw new Error("Empty text for TTS.");
 
   console.log(`🎙️ Gemini TTS voice=${voice.name} model=${GEMINI_TTS_MODEL}`);
 
   try {
     const [response] = await client.synthesizeSpeech({
-      input: { text: cleanText }, // ✅ Revert to plain text (Gemini TTS doesn't support SSML yet)
+      input: { text: processedText },
       voice: {
         languageCode: voice.languageCode,
         name: voice.voiceName,
@@ -78,8 +88,17 @@ export async function generateGeminiSpeech(
       },
       audioConfig: {
         audioEncoding: "MP3",
-        speakingRate: 1.0,
-        pitch: 0,
+        // 0.82 is the "sweet spot" for sleep. 
+        // Anything lower than 0.75 sounds "drunk"; anything higher than 0.9 sounds "alert."
+        speakingRate: 0.82,
+
+        // Lowering pitch further (-2.5) removes the "tinny" AI digital artifacts 
+        // and emphasizes the "chest voice" of the model.
+        pitch: -2.5,
+
+        // "wearable-class-device" has a tighter EQ curve for sleepbuds/AirPods
+        // which reduces harsh 'S' sounds (sibilance).
+        effectsProfileId: ["wearable-class-device"],
       },
     });
 
@@ -104,6 +123,6 @@ export async function generateGeminiVoicePreview(
   voiceKey: GeminiVoiceKey
 ): Promise<Buffer> {
   const previewText =
-    "Close your eyes. Take a slow breath. You're safe here. Let the day fade away.";
+    "The forest is quiet tonight. Soft moss covers the ground. The trees stand tall and still. A gentle breeze whispers through the leaves.";
   return generateGeminiSpeech(previewText, voiceKey);
 }

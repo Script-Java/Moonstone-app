@@ -14,6 +14,7 @@ import {
   View
 } from "react-native";
 
+import { useAudioQueue } from "@/components/AudioQueueProvider";
 import { useFirebase } from "@/components/FirebaseStore";
 import Screen from "@/components/Screen";
 import { COLORS } from "@/constants/colors";
@@ -31,6 +32,7 @@ interface LibraryItem {
 
 export default function Library() {
   const { db, user, functions } = useFirebase();
+  const { currentStory, isPlaying } = useAudioQueue();
   // removed useTheme()
 
   // --- State ---
@@ -154,40 +156,71 @@ export default function Library() {
           ) : filtered.length === 0 ? (
             <Text className="text-white/20 text-center mt-10 font-bold">No narratives found.</Text>
           ) : (
-            filtered.map((it) => (
-              <Pressable
-                key={it.id}
-                onPress={() => router.push({ pathname: "/(tabs)/sleep", params: { storyId: it.id } })}
-                className="bg-surface rounded-3xl border border-border p-5 flex-row items-center"
-              >
-                {/* Visual Placeholder for Story */}
-                <View className="h-14 w-14 rounded-2xl bg-white/5 border border-white/5 items-center justify-center">
-                  <Ionicons name="bookmark" size={20} color={it.isFavorite ? COLORS.primary : "rgba(255,255,255,0.2)"} />
-                </View>
+            filtered.map((it) => {
+              const isCurrent = currentStory?.id === it.id;
+              // If it's the current story, we highlight it.
+              // We can also distinguish playing vs paused if desired, 
+              // but purely locking it as "Active" is usually enough.
 
-                <View className="ml-4 flex-1">
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-white font-extrabold text-base flex-1 mr-2" numberOfLines={1}>
-                      {it.title}
-                    </Text>
-                    <Pressable
-                      onPress={() => { setSelectedStory(it); setMenuVisible(true); }}
-                      className="p-1"
-                    >
-                      <Ionicons name="ellipsis-horizontal" size={20} color="rgba(255,255,255,0.3)" />
-                    </Pressable>
+              return (
+                <Pressable
+                  key={it.id}
+                  onPress={() => router.push({ pathname: "/(tabs)/sleep", params: { storyId: it.id } })}
+                  className={`rounded-3xl border p-5 flex-row items-center ${isCurrent
+                    ? "bg-primary/5 border-primary"
+                    : "bg-surface border-border"
+                    }`}
+                >
+                  {/* Visual Placeholder for Story */}
+                  <View
+                    className={`h-14 w-14 rounded-2xl items-center justify-center border ${isCurrent
+                      ? "bg-primary/20 border-primary/20"
+                      : "bg-white/5 border-white/5"
+                      }`}
+                  >
+                    <Ionicons
+                      name={isCurrent ? (isPlaying ? "musical-notes" : "pause") : "bookmark"}
+                      size={20}
+                      color={it.isFavorite || isCurrent ? COLORS.primary : "rgba(255,255,255,0.2)"}
+                    />
                   </View>
 
-                  <View className="flex-row items-center mt-1">
-                    <Text className="text-white/40 font-bold text-xs uppercase tracking-tighter">
-                      {it.mood} • {Math.ceil((it.durationSec || 300) / 60)}m
-                    </Text>
-                    <Text className="text-white/20 text-xs mx-2">|</Text>
-                    <Text className="text-white/40 font-bold text-xs">{formatDate(it.createdAt)}</Text>
+                  <View className="ml-4 flex-1">
+                    <View className="flex-row items-center justify-between">
+                      <Text
+                        className={`font-extrabold text-base flex-1 mr-2 ${isCurrent ? "text-primary" : "text-white"
+                          }`}
+                        numberOfLines={1}
+                      >
+                        {it.title}
+                      </Text>
+                      <Pressable
+                        onPress={() => { setSelectedStory(it); setMenuVisible(true); }}
+                        className="p-1"
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={20} color="rgba(255,255,255,0.3)" />
+                      </Pressable>
+                    </View>
+
+                    <View className="flex-row items-center mt-1">
+                      <Text className="text-white/40 font-bold text-xs uppercase tracking-tighter">
+                        {it.mood} • {Math.ceil((it.durationSec || 300) / 60)}m
+                      </Text>
+                      <Text className="text-white/20 text-xs mx-2">|</Text>
+                      <Text className="text-white/40 font-bold text-xs">{formatDate(it.createdAt)}</Text>
+                      {isCurrent && (
+                        <>
+                          <Text className="text-white/20 text-xs mx-2">|</Text>
+                          <Text className="text-primary font-bold text-xs uppercase tracking-widest">
+                            {isPlaying ? "Playing" : "Paused"}
+                          </Text>
+                        </>
+                      )}
+                    </View>
                   </View>
-                </View>
-              </Pressable>
-            ))
+                </Pressable>
+              );
+            })
           )}
         </View>
 
@@ -279,7 +312,7 @@ export default function Library() {
               </Pressable>
               <Pressable
                 onPress={async () => {
-                  if (!selectedStory) return;
+                  if (!selectedStory || !db) return;
                   await updateDoc(doc(db, "stories", selectedStory.id), { title: editTitle.trim() });
                   setEditModalVisible(false);
                 }}

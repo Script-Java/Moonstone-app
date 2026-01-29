@@ -1,9 +1,11 @@
 import { firebaseConfig } from "@/constants/firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import { FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
 import {
     Auth,
     getAuth,
+    // @ts-ignore
     getReactNativePersistence,
     initializeAuth,
     onAuthStateChanged,
@@ -50,9 +52,13 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
             let firebaseAuth: Auth;
             if (getApps().length <= 1) {
                 try {
-                    firebaseAuth = initializeAuth(firebaseApp, {
-                        persistence: getReactNativePersistence(AsyncStorage)
-                    });
+                    if (Platform.OS === 'web') {
+                        firebaseAuth = getAuth(firebaseApp);
+                    } else {
+                        firebaseAuth = initializeAuth(firebaseApp, {
+                            persistence: getReactNativePersistence(AsyncStorage)
+                        });
+                    }
                 } catch (e: any) {
                     // Check if error is because it's already initialized
                     if (e.code === 'auth/already-initialized') {

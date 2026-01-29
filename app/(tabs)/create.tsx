@@ -35,7 +35,7 @@ export default function Create() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [settings, setSettings] = useState<StorySettings>({
     storyLength: "standard",
-    voiceKey: "gb_wavenet_d",
+    voiceKey: "kore",
     goodNightMessage: "Sweet dreams, sleep tight ✨",
   });
 
@@ -80,7 +80,7 @@ export default function Create() {
     setError(null);
 
     try {
-      const createStory = httpsCallable(functions, "createStory");
+      const createStory = httpsCallable(functions, "createStory", { timeout: 540000 });
       const res = await createStory({
         protagonist1: p1,
         protagonist2: p2,

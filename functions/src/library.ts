@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { admin, db, storage } from "./firebase";
+import { admin, db } from "./firebase";
 
 
 // 1. addToLibrary: Manually add a story (e.g. shared by a friend)
@@ -78,38 +78,10 @@ export const deleteStory = onCall({ cors: true }, async (request) => {
     const uid = request.auth.uid;
     const libraryRef = db.collection("users").doc(uid).collection("library").doc(storyId);
 
-    // Get the library entry to verify it exists
-    const libDoc = await libraryRef.get();
-    if (!libDoc.exists) {
-        return { success: true, message: "Story already removed from library" };
-    }
-
-    // Also get the main story doc to check ownership
-    const storyRef = db.collection("stories").doc(storyId);
-    const storyDoc = await storyRef.get();
-
-    const batch = db.batch();
-
     // 1. Remove from user's library
-    batch.delete(libraryRef);
+    // We do NOT delete from the global 'stories' collection or storage ("Dream Well" persistence)
+    // This ensures cached stories remain available for others or future requests.
+    await libraryRef.delete();
 
-    // 2. If user owns the story, delete the main story doc + audio file
-    if (storyDoc.exists && storyDoc.data()?.ownerUid === uid) {
-        batch.delete(storyRef);
-
-        // Delete from Storage
-        const audioPath = storyDoc.data()?.audioPath;
-        if (audioPath) {
-            // We don't await this in the transaction/batch, just fire & forget or await separately
-            // Using a try-catch for storage deletion so it doesn't fail the whole operation if file is missing
-            try {
-                await storage.bucket().file(audioPath).delete();
-            } catch (e) {
-                console.warn(`Failed to delete audio ${audioPath}:`, e);
-            }
-        }
-    }
-
-    await batch.commit();
     return { success: true };
 });

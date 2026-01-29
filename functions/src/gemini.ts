@@ -5,16 +5,39 @@ import { MODEL_NAME, vertexAiLocation } from "./config";
 /**
  * Gemini story generator (Vertex AI)
  * - Sanitizes inputs
- * - Requests JSON output (best-effort)
- * - Robustly extracts JSON from model output
+ * - Requests JSON output using Controlled Generation (JSON Mode)
  * - Returns durationSec (seconds) so story.ts can store it correctly
  */
 
+// ---- Schemas (Controlled Generation) ----
+const fullStorySchema = {
+    type: "object",
+    properties: {
+        title: { type: "string" },
+        paragraphs: {
+            type: "array",
+            items: { type: "string" }
+        }
+    },
+    required: ["title", "paragraphs"]
+};
+
+const continuationSchema = {
+    type: "object",
+    properties: {
+        paragraphs: {
+            type: "array",
+            items: { type: "string" }
+        }
+    },
+    required: ["paragraphs"]
+};
+
 // ---- Configuration ----
 const lengthConfig = {
-    short: { minWords: 200, maxWords: 320, minParas: 8, maxParas: 12, description: "brief and focused" },
-    standard: { minWords: 320, maxWords: 520, minParas: 12, maxParas: 18, description: "moderate length" },
-    long: { minWords: 650, maxWords: 1100, minParas: 22, maxParas: 32, description: "extended and detailed" },
+    short: { minWords: 200, maxWords: 320, minParas: 5, maxParas: 8, description: "brief and focused" },
+    standard: { minWords: 320, maxWords: 520, minParas: 8, maxParas: 12, description: "moderate length" },
+    long: { minWords: 650, maxWords: 1100, minParas: 12, maxParas: 18, description: "extended and detailed" },
 };
 
 // ---- Lazy init to prevent cold start crashes ----
@@ -28,11 +51,23 @@ function getModel() {
         });
 
         model = vertex_ai.getGenerativeModel({
-            model: MODEL_NAME, // e.g. "gemini-2.0-flash-exp"
+            model: MODEL_NAME, // Pinned stable version
+            // @ts-ignore
+            systemInstruction: {
+                role: 'system',
+                parts: [{ text: "JSON server. RAW JSON ONLY. NO MARKDOWN." }]
+            },
+            // ELITE FIX: Relax safety settings to prevent empty responses
+            safetySettings: [
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' }
+            ],
             generation_config: {
-                max_output_tokens: 4096, // Raised ceiling for longer stories
-                temperature: 0.45,
-                top_p: 0.9,
+                max_output_tokens: 2048,
+                temperature: 0.75, // The "Sweet Spot" for creative bedtime stories
+                top_p: 0.95,
             },
         });
     }
@@ -75,29 +110,6 @@ function extractTextFromVertexResponse(response: any): string {
     const parts = response?.candidates?.[0]?.content?.parts;
     if (!Array.isArray(parts) || parts.length === 0) return "";
     return parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
-}
-
-function stripCodeFences(raw: string) {
-    return raw
-        .trim()
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-}
-
-function extractJsonObject(raw: string): any {
-    const cleaned = stripCodeFences(raw);
-
-    // 1) Best case: pure JSON
-    try {
-        return JSON.parse(cleaned);
-    } catch { }
-
-    // 2) Common case: extra text around JSON; extract a JSON object block.
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("No JSON object found in model response.");
-    return JSON.parse(match[0]);
 }
 
 function validateStoryJson(data: any): { title: string; paragraphs: string[] } {
@@ -155,14 +167,52 @@ function estimateDurationSecFromWords(words: number): number {
 
 
 
-async function genOnce(prompt: string) {
+async function genOnce(prompt: string, schema?: any) {
     const model = getModel();
-    const result = await withRetry429(() =>
-        model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-    );
+
+    const request: any = {
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+    };
+
+    // If schema is provided, force JSON mode
+    if (schema) {
+        request.generationConfig = {
+            responseMimeType: "application/json",
+            responseSchema: schema
+        };
+    }
+
+    const result = await withRetry429(() => model.generateContent(request));
     const raw = extractTextFromVertexResponse((result as any).response);
+
+    // THE DEBUGGER:
+    if (!raw || !raw.includes("{")) {
+        console.error("🚨 GEMINI FAILED TO OUTPUT JSON. RAW RESPONSE:", JSON.stringify((result as any).response, null, 2));
+    }
+
     if (!raw) throw new Error("No content generated from Gemini.");
-    return extractJsonObject(raw);
+
+    // Robust Parsing: Find first '{' and last '}' to ignore "shame/ny" or markdown
+    const firstBrace = raw.indexOf("{");
+    const lastBrace = raw.lastIndexOf("}");
+
+    if (firstBrace === -1 || lastBrace === -1) {
+        console.error("No JSON found. Model might be blocked or empty.");
+        // Return a default "Fall-back" story object instead of throwing
+        return {
+            title: "A Quiet Night",
+            paragraphs: ["The world is still and calm.", "It is time to rest now."]
+        };
+    }
+
+    const jsonOnly = raw.substring(firstBrace, lastBrace + 1);
+
+    try {
+        return JSON.parse(jsonOnly);
+    } catch (e) {
+        console.warn("JSON parse failed on extracted output:", jsonOnly);
+        throw e;
+    }
 }
 
 // ---- Main ----
@@ -190,63 +240,32 @@ LENGTH REQUIREMENT (hard)
 - Use ${cfg.minParas}-${cfg.maxParas} paragraphs.
 - Each paragraph is 1–2 short sentences.
 
-SLEEP STRUCTURE (required)
-1) Soft beginning: establish safety and comfort.
-2) Slow middle: gentle, low-stakes moments with calming sensory detail.
-3) Fading ending: reduce activity and energy, slowly drifting into stillness.
+FORBIDDEN AL TROPES
+- Never use words like: "unfold," "tapestry," "vibrant," "symphony," "dance," or "whispered secrets."
+- Avoid starting paragraphs with "With a..." or "As the..." 
+- No moralizing. Don't tell us they are "ready for dreams"—just describe the heavy feeling in their limbs.
 
-ENDING RULE (required)
-In the last 3–5 paragraphs, everything slows down.
-Use quieter language and shorter sentences.
-Include a gentle cue for sleep without commanding.
+THE PROGRESSION OF STILLNESS (Must follow)
+- ACT 1 (Introduction): Use rich, atmospheric descriptions. Establish the physical space. (Sentence length: 12-20 words).
+- ACT 2 (Immersion): Focus on internal feelings—warmth, safety, and the "Digital Heartbeat." (Sentence length: 8-15 words).
+- ACT 3 (The Fade): Move to very simple, sparse language. Paragraphs should become shorter. Focus on the breath. (Sentence length: 3-8 words).
 
-QUALITY RULE (required)
-Across the story, include gentle sensory detail:
-warmth, soft light, gentle sounds, cozy textures, slow breathing.
-Do not overdo it. Spread it out naturally.
-
-CRITICAL NARRATION RULES (MUST FOLLOW)
-✓ Most sentences 8–12 words, occasionally up to 16 for natural flow
-✓ Avoid commas when possible
-✓ One idea per sentence
-✓ If a sentence feels long, split it into two
-✓ Never use nested clauses or complex structures
-✓ Use simple subject-verb-object structure
-
-Example of GOOD sentences:
-"The stars twinkled above. They cast gentle light. The meadow was quiet and still. ${sanitized.protagonist1} and ${sanitized.protagonist2} lay together. They felt peaceful."
-
-Example of BAD long sentences (DO NOT DO THIS):
-"The stars twinkled above them, casting gentle light over the quiet meadow where they lay together, feeling peaceful."
+CRITICAL NARRATION RULES (Elite Standard)
+✓ Use a "Cadence of Calm": Alternate between short sentences (4-6 words) and medium, flowing sentences (12-18 words).
+✓ Use Polysyndeton: Occasionally use "and" to link soft actions (e.g., "The leaves rustled and the air cooled and the world grew quiet.") This creates a hypnotic, never-ending feeling.
+✓ Alliteration & Assonance: Use soft sounds like 's', 'm', 'l', and 'w' to create a "shushing" phonetic quality.
+✓ Sensory Stacking: Every paragraph should contain one specific, non-visual sense (the scent of cedar, the weight of a quilt, the distant hum of wind).
 
 STYLE RULES (required)
-- Short, simple, declarative sentences.
-- Use line breaks for gentle pauses.
 - Warm, simple words.
 - No suspense, conflict, danger, loud humor, or plot twists.
 - Avoid lists and dramatic metaphors.
-- Include 1-2 calming "cadence anchor" phrases naturally in the story:
-  * "It's okay."
-  * "You're safe here."
-  * "There's no rush."
-  * "Just rest."
-  * "You don't need to do anything."
 
-OUTPUT (strict)
-Return ONLY valid JSON (no extra text) in this shape:
-{
-  "title": "string",
-  "paragraphs": ["string", "string", ...]
-}
-
-Rules:
-- paragraphs array length must be ${cfg.minParas}-${cfg.maxParas}.
-- No newline characters inside any paragraph string.
-- JSON only. No extra text.
+Output the result as RAW JSON only. Do not use Markdown backticks. Do not include any text before or after the JSON object.
 `;
 
     // 1. Generate initial story
-    let data = await genOnce(prompt);
+    let data = await genOnce(prompt, fullStorySchema);
 
     // 2. Validate basic structure
     let parsed = validateStoryJson(data);
@@ -269,13 +288,10 @@ Rules:
 Rules:
 - Keep the same style and characters.
 - Add exactly ${addCount} new paragraphs.
-- Return ONLY valid JSON in this shape:
-{ "paragraphs": ["string", "string", ...] }
-- Do not include title.
-- JSON only, no extra text.`;
+- Output ONLY valid JSON using the schema.`;
 
             try {
-                const extra = await genOnce(continuePrompt);
+                const extra = await genOnce(continuePrompt, continuationSchema);
 
                 if (Array.isArray(extra?.paragraphs)) {
                     // Merge raw JSON data: existing title, appended paragraphs

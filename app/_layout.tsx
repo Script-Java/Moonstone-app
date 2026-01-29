@@ -1,6 +1,8 @@
 // app/_layout.tsx
 import { FirebaseProvider } from "@/components/FirebaseStore";
 import { OnboardingProvider } from "@/components/OnboardingStore";
+import { BedtimeModeProvider } from "@/components/BedtimeModeContext";
+import { AudioQueueProvider } from "@/components/AudioQueueProvider";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   Inter_400Regular,
@@ -73,11 +75,15 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <FirebaseProvider>
         <OnboardingProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(onboarding)" />
-            <Stack.Screen name="(tabs)" />
-          </Stack>
-          <StatusBar style="auto" />
+          <BedtimeModeProvider>
+            <AudioQueueProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(onboarding)" />
+                <Stack.Screen name="(tabs)" />
+              </Stack>
+              <StatusBar style="auto" />
+            </AudioQueueProvider>
+          </BedtimeModeProvider>
         </OnboardingProvider>
       </FirebaseProvider>
     </ThemeProvider>
