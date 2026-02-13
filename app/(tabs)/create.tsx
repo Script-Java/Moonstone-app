@@ -35,7 +35,7 @@ export default function Create() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [settings, setSettings] = useState<StorySettings>({
     storyLength: "standard",
-    voiceKey: "gb_wavenet_d",
+    voiceKey: "kore",
     goodNightMessage: "Sweet dreams, sleep tight ✨",
   });
 
@@ -91,7 +91,7 @@ export default function Create() {
         goodNightMessage: settings.goodNightMessage,
       });
 
-      const data = res.data as any;
+      const data = res.data as { storyId?: string };
       if (data?.storyId) {
         router.replace({ pathname: "/(tabs)/sleep", params: { storyId: data.storyId } });
       } else {

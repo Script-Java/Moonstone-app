@@ -1,4 +1,5 @@
 // app/_layout.tsx
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FirebaseProvider } from "@/components/FirebaseStore";
 import { OnboardingProvider } from "@/components/OnboardingStore";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -17,8 +18,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { LogBox } from "react-native";
-import "react-native-reanimated";
 import { configureReanimatedLogger } from "react-native-reanimated";
+
 import "../global.css";
 
 // Disable Reanimated strict mode warnings
@@ -54,32 +55,25 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        await import("expo-audio");
-        console.log("✅ New Expo Audio configured (module loaded)");
-      } catch (e) {
-        console.warn("⚠️ Audio config error:", e);
-      }
-    })();
-  }, []);
+
 
   if (!fontsLoaded) {
     return null;
   }
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <FirebaseProvider>
-        <OnboardingProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(onboarding)" />
-            <Stack.Screen name="(tabs)" />
-          </Stack>
-          <StatusBar style="auto" />
-        </OnboardingProvider>
-      </FirebaseProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <FirebaseProvider>
+          <OnboardingProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(onboarding)" />
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+            <StatusBar style="auto" />
+          </OnboardingProvider>
+        </FirebaseProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

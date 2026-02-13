@@ -1,5 +1,5 @@
 // gemini.ts
-import { VertexAI } from "@google-cloud/vertexai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { MODEL_NAME, vertexAiLocation } from "./config";
 
 /**
@@ -18,25 +18,17 @@ const lengthConfig = {
 };
 
 // ---- Lazy init to prevent cold start crashes ----
-let model: any = null;
+let ai: GoogleGenAI | null = null;
 
-function getModel() {
-    if (!model) {
-        const vertex_ai = new VertexAI({
+function getAI() {
+    if (!ai) {
+        ai = new GoogleGenAI({
+            vertexai: true,
             project: process.env.GCLOUD_PROJECT || "moonstone-4ffb6",
             location: vertexAiLocation,
         });
-
-        model = vertex_ai.getGenerativeModel({
-            model: MODEL_NAME, // e.g. "gemini-2.0-flash-exp"
-            generation_config: {
-                max_output_tokens: 4096, // Raised ceiling for longer stories
-                temperature: 0.45,
-                top_p: 0.9,
-            },
-        });
     }
-    return model;
+    return ai;
 }
 
 // ---- Types ----
@@ -71,11 +63,7 @@ function sanitizeInputs(inputs: StoryInputs) {
     return { protagonist1, protagonist2, mood, tags, storyLength };
 }
 
-function extractTextFromVertexResponse(response: any): string {
-    const parts = response?.candidates?.[0]?.content?.parts;
-    if (!Array.isArray(parts) || parts.length === 0) return "";
-    return parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
-}
+// extractTextFromVertexResponse removed as new SDK provides .text property directly
 
 function stripCodeFences(raw: string) {
     return raw
@@ -156,13 +144,60 @@ function estimateDurationSecFromWords(words: number): number {
 
 
 async function genOnce(prompt: string) {
-    const model = getModel();
-    const result = await withRetry429(() =>
-        model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
-    );
-    const raw = extractTextFromVertexResponse((result as any).response);
-    if (!raw) throw new Error("No content generated from Gemini.");
-    return extractJsonObject(raw);
+    const ai = getAI();
+    let result: any;
+
+    try {
+        result = await withRetry429(() =>
+            ai.models.generateContent({
+                model: MODEL_NAME,
+                contents: prompt,
+                config: {
+                    maxOutputTokens: 4096,
+                    temperature: 1.0,
+                    topP: 0.9,
+                    // topK: 64, // Fixed at 64 for 2.5-flash
+                    // responseMimeType: "application/json", // Removed for robustness
+                    safetySettings: [
+                        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    ],
+                },
+            })
+        );
+    } catch (apiErr: any) {
+        console.error("Gemini API Call Failed:", apiErr);
+        throw new Error(`Gemini API Failed: ${apiErr.message}`);
+    }
+
+    let raw: string | undefined;
+    try {
+        // Safe access to text getter 
+        raw = result.text;
+    } catch (e) {
+        console.warn("result.text getter failed", e);
+    }
+
+    // Fallback if getter returns undefined or fails
+    if (!raw && result.response) {
+        raw = result.response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    }
+
+    if (!raw) {
+        console.error("Gemini returned empty text. Full Result:", JSON.stringify(result, null, 2));
+        throw new Error("No content generated from Gemini.");
+    }
+
+    console.log("Gemini Raw Response:", JSON.stringify(raw));
+
+    try {
+        return extractJsonObject(raw);
+    } catch (err: any) {
+        console.error("JSON Extraction Failed. Raw text was:", raw);
+        throw err;
+    }
 }
 
 // ---- Main ----

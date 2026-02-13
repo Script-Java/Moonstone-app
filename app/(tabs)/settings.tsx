@@ -208,8 +208,15 @@ export default function Settings() {
 }
 
 // --- HELPER COMPONENTS ---
+interface SettingRowProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value?: string;
+  onPress: () => void;
+  last?: boolean;
+}
 
-function SettingRow({ icon, title, value, onPress, last }: any) {
+function SettingRow({ icon, title, value, onPress, last }: SettingRowProps) {
   return (
     <Pressable onPress={onPress} className={`flex-row items-center px-6 py-5 ${!last && 'border-b border-white/5'}`}>
       <View className="h-10 w-10 rounded-2xl bg-white/5 items-center justify-center border border-white/5">

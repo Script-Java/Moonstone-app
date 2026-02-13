@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ImageBackground,
@@ -11,7 +11,8 @@ import {
   ScrollView,
   Switch,
   Text,
-  View
+  View,
+  Alert
 } from "react-native";
 
 import { useBedtimeMode } from "@/components/BedtimeModeContext";
@@ -19,7 +20,7 @@ import BedtimeModeScreen from "@/components/BedtimeModeScreen";
 import { useFirebase } from "@/components/FirebaseStore";
 import Screen from "@/components/Screen";
 import { COLORS } from "@/constants/colors";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, query, where, orderBy } from "firebase/firestore";
 import { getDownloadURL, getStorage, ref } from "firebase/storage";
 
 const AMBIENT_SOUNDS = {
@@ -29,12 +30,23 @@ const AMBIENT_SOUNDS = {
   Forest: require("@/assets/audio/forest.mp3"),
 } as const;
 
+// Placeholder for Brown Noise - Replace with actual asset or URL
+const BROWN_NOISE_URI = "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3";
+
 type AmbienceKey = keyof typeof AMBIENT_SOUNDS;
 
+interface Story {
+  id: string;
+  title: string;
+  mood: string;
+  audioPath?: string;
+  createdAt?: any;
+}
+
 export default function Sleep() {
-  const { storyId } = useLocalSearchParams<{ storyId: string }>();
+  const { storyId, autoPlay } = useLocalSearchParams<{ storyId: string, autoPlay?: string }>();
   const { db, app, user } = useFirebase();
-  const [story, setStory] = useState<any>(null);
+  const [story, setStory] = useState<Story | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [fetching, setFetching] = useState(true);
 
@@ -43,6 +55,7 @@ export default function Sleep() {
   const [storyVolume, setStoryVolume] = useState(1.0);
   const [ambientVolume, setAmbientVolume] = useState(0.3);
 
+  // Load initial story
   useEffect(() => {
     async function fetchStory() {
       if (!storyId || !db) { setFetching(false); return; }
@@ -51,7 +64,7 @@ export default function Sleep() {
         const docRef = doc(db, "stories", storyId);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
-          const data = snap.data();
+          const data = { id: snap.id, ...snap.data() } as Story;
           setStory(data);
           if (data.audioPath) {
             const storage = getStorage(app!);
@@ -64,6 +77,51 @@ export default function Sleep() {
     }
     fetchStory();
   }, [db, storyId]);
+
+  // Function to load the *next* story automatically
+  const loadNextStory = async (currentMood: string, currentId: string) => {
+    if (!db) return;
+    try {
+      // Simple logic: fetch another story of same mood, exclude current
+      const q = query(
+        collection(db, "stories"),
+        where("mood", "==", currentMood),
+        limit(5)
+      );
+      const snap = await getDocs(q);
+      const candidates = snap.docs.map(d => ({ id: d.id, ...d.data() } as Story)).filter(s => s.id !== currentId);
+
+      if (candidates.length > 0) {
+        // Pick random
+        const next = candidates[Math.floor(Math.random() * candidates.length)];
+        return next;
+      }
+      return null;
+    } catch (e) {
+      console.error("Failed to load next story", e);
+      return null;
+    }
+  };
+
+  const handleStoryEnd = async () => {
+    // Logic to switch to next story is handled in StoryPlayer via transition
+    // But we need to update the *state* here to reflect the new story content
+    if (story) {
+      const next = await loadNextStory(story.mood, story.id);
+      if (next) {
+        setFetching(true);
+        setStory(next);
+        // Fetch audio for next
+        if (next.audioPath) {
+          const storage = getStorage(app!);
+          const audioRef = ref(storage, next.audioPath);
+          const url = await getDownloadURL(audioRef);
+          setAudioUrl(url);
+        }
+        setFetching(false);
+      }
+    }
+  };
 
   return (
     <Screen>
@@ -86,19 +144,42 @@ export default function Sleep() {
           setAmbientVolume={setAmbientVolume}
           loading={fetching}
           userName={user?.displayName?.split(' ')[0] || 'there'}
+          autoPlay={autoPlay === 'true'}
+          onNextStory={handleStoryEnd}
         />
       )}
     </Screen>
   );
 }
 
-function StoryPlayer({ story, audioUrl, ambience, setAmbience, ambientEnabled, setAmbientEnabled, storyVolume, setStoryVolume, ambientVolume, setAmbientVolume, loading, colors, theme, userName }: any) {
+interface StoryPlayerProps {
+  story: Story | null;
+  audioUrl: string | null;
+  ambience: AmbienceKey;
+  setAmbience: (ambience: AmbienceKey) => void;
+  ambientEnabled: boolean;
+  setAmbientEnabled: (enabled: boolean) => void;
+  storyVolume: number;
+  setStoryVolume: (volume: number) => void;
+  ambientVolume: number;
+  setAmbientVolume: (volume: number) => void;
+  loading: boolean;
+  userName: string;
+  autoPlay: boolean;
+  onNextStory: () => Promise<void>;
+}
+
+function StoryPlayer({ story, audioUrl, ambience, setAmbience, ambientEnabled, setAmbientEnabled, storyVolume, setStoryVolume, ambientVolume, setAmbientVolume, loading, userName, autoPlay, onNextStory }: StoryPlayerProps) {
   const { isActive: bedtimeModeActive, activateBedtimeMode, setSleepTimer } = useBedtimeMode();
   const [mixerModalVisible, setMixerModalVisible] = React.useState(false);
+  const [statusText, setStatusText] = useState("Ready");
 
+  // Audio Players
   const storySource = useMemo(() => (audioUrl ? { uri: audioUrl } : null), [audioUrl]);
   const storyPlayer = useAudioPlayer(storySource);
   const storyStatus = useAudioPlayerStatus(storyPlayer);
+
+  const brownNoisePlayer = useAudioPlayer(BROWN_NOISE_URI);
 
   const ambientPlayers = {
     Rain: useAudioPlayer(AMBIENT_SOUNDS.Rain),
@@ -107,20 +188,113 @@ function StoryPlayer({ story, audioUrl, ambience, setAmbience, ambientEnabled, s
     Forest: useAudioPlayer(AMBIENT_SOUNDS.Forest),
   };
 
+  // State for Fade/Transition
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [hasTriggeredNext, setHasTriggeredNext] = useState(false);
+
+  // Initial Autoplay
   useEffect(() => {
-    if (storyPlayer) storyPlayer.volume = storyVolume;
-    Object.entries(ambientPlayers).forEach(([key, player]) => {
-      if (!player) return;
-      player.loop = true;
-      const isActive = key === ambience;
-      if (isActive && ambientEnabled && storyStatus.playing) {
-        player.volume = ambientVolume;
-        player.play();
-      } else {
-        player.pause();
+    if (autoPlay && storyPlayer && !storyStatus.playing && storyStatus.currentTime === 0 && !loading) {
+      storyPlayer.play();
+    }
+  }, [autoPlay, storyPlayer, loading]); // Removed storyStatus.playing from dependencies to avoid loop, but checked in condition
+
+  // Volume & Ambience Control
+  useEffect(() => {
+    // Normal volume control (overridden during transition)
+    if (!isTransitioning) {
+      if (storyPlayer) storyPlayer.volume = storyVolume;
+
+      Object.entries(ambientPlayers).forEach(([key, player]) => {
+        if (!player) return;
+        player.loop = true;
+        const isActive = key === ambience;
+        if (isActive && ambientEnabled && storyStatus.playing) {
+          player.volume = ambientVolume;
+          player.play();
+        } else {
+          player.pause();
+        }
+      });
+
+      // Brown noise should be off normally
+      if (brownNoisePlayer) brownNoisePlayer.pause();
+    }
+  }, [storyVolume, ambientVolume, ambientEnabled, storyStatus.playing, ambience, isTransitioning]);
+
+
+  // TRANSITION LOGIC
+  useEffect(() => {
+    if (!storyPlayer || !storyStatus.duration) return;
+
+    const timeLeft = storyStatus.duration - storyStatus.currentTime;
+    const FADE_DURATION = 15; // seconds
+
+    if (storyStatus.playing && timeLeft <= FADE_DURATION && timeLeft > 0) {
+      // --- START TRANSITION ---
+      setIsTransitioning(true);
+      setStatusText("Transitioning...");
+
+      // Calculate fade factor (0.0 to 1.0)
+      // At timeLeft = 20, factor = 1.0 (Full Volume)
+      // At timeLeft = 0, factor = 0.0 (Silent)
+      const fadeFactor = timeLeft / FADE_DURATION;
+      const inverseFade = 1 - fadeFactor;
+
+      // Fade OUT Story & Ambience
+      storyPlayer.volume = storyVolume * fadeFactor;
+
+      const activeAmbient = ambientPlayers[ambience as AmbienceKey];
+      if (activeAmbient && ambientEnabled) {
+        activeAmbient.volume = ambientVolume * fadeFactor;
       }
-    });
-  }, [storyVolume, ambientVolume, ambientEnabled, storyStatus.playing, ambience]);
+
+      // Fade IN Brown Noise
+      // Brown noise ramps up to max 0.5 volume to not be too loud
+      if (brownNoisePlayer) {
+        brownNoisePlayer.loop = true;
+        brownNoisePlayer.volume = inverseFade * 0.4;
+        brownNoisePlayer.play();
+      }
+
+      // --- PREPARE NEXT STORY ---
+      if (timeLeft < 2 && !hasTriggeredNext) {
+        setHasTriggeredNext(true);
+
+        // Perform the switch
+        // 1. Wait for end? Or force next?
+        // Let's force next load
+        setTimeout(async () => {
+          await onNextStory();
+          // Reset states for new story
+          setIsTransitioning(false);
+          setHasTriggeredNext(false);
+          // Brown noise will be stopped by the main useEffect when isTransitioning becomes false
+          // But we want it to fade out *slowly* into the new story? 
+          // For now, the "Bridge" is abrupt on state change, but the brown noise effectively covers the gap.
+          // Ideally, we'd keep brown noise playing for 5 more seconds into the new story.
+          // Implementing "Fade In" for new story:
+          await fadeNewStoryIn();
+        }, 2000);
+      }
+
+    } else if (storyStatus.currentTime < 5 && storyStatus.playing) {
+      // Reset if just started
+      setIsTransitioning(false);
+      setHasTriggeredNext(false);
+      setStatusText("Flowing");
+      if (brownNoisePlayer) brownNoisePlayer.pause();
+    }
+  }, [storyStatus.currentTime, storyStatus.duration, storyStatus.playing]);
+
+  const fadeNewStoryIn = async () => {
+    // Helper to fade in the new story
+    if (!storyPlayer) return;
+    storyPlayer.play();
+    // Logic for ramping volume up would go here, 
+    // but simplistic "play" is okay for now as Brown Noise cuts out.
+  };
+
 
   const formatSeconds = (s: number) => {
     const totalSec = Math.floor(s || 0);
@@ -154,7 +328,7 @@ function StoryPlayer({ story, audioUrl, ambience, setAmbience, ambientEnabled, s
           <View className="flex-1 p-6 justify-end">
             <View className="flex-row items-center justify-between mb-4">
               <View className="bg-primary px-3 py-1 rounded-full">
-                <Text className="text-black font-bold text-[10px] tracking-widest uppercase">{storyStatus.playing ? "Flowing" : "Paused"}</Text>
+                <Text className="text-black font-bold text-[10px] tracking-widest uppercase">{storyStatus.playing ? statusText : "Paused"}</Text>
               </View>
               <Text className="text-white font-bold text-xs">{formatSeconds(storyStatus.duration - storyStatus.currentTime)} left</Text>
             </View>

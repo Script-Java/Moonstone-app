@@ -1,17 +1,19 @@
-import { firebaseConfig } from "@/constants/firebaseConfig";
+import { firebaseConfig, validateFirebaseConfig } from "@/constants/firebaseConfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
 import {
     Auth,
     getAuth,
-    getReactNativePersistence,
     initializeAuth,
     onAuthStateChanged,
     User
 } from "firebase/auth";
+// @ts-ignore
+import { getReactNativePersistence } from "@firebase/auth";
 import { Firestore, getFirestore } from "firebase/firestore";
 import { Functions, getFunctions } from "firebase/functions";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { Alert } from "react-native";
 
 interface FirebaseContextType {
     app: FirebaseApp | null;
@@ -20,6 +22,7 @@ interface FirebaseContextType {
     functions: Functions | null;
     user: User | null;
     isLoading: boolean;
+    error: string | null;
 }
 
 const FirebaseContext = createContext<FirebaseContextType>({
@@ -29,6 +32,7 @@ const FirebaseContext = createContext<FirebaseContextType>({
     functions: null,
     user: null,
     isLoading: true,
+    error: null,
 });
 
 export const useFirebase = () => useContext(FirebaseContext);
@@ -40,8 +44,22 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
     const [auth, setAuth] = useState<Auth | null>(null);
     const [db, setDb] = useState<Firestore | null>(null);
     const [functions, setFunctions] = useState<Functions | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        // Validate Firebase config before initialization
+        if (!validateFirebaseConfig()) {
+            const errorMsg = "Firebase configuration is invalid or missing. Please check your environment variables.";
+            console.error(errorMsg);
+            setError(errorMsg);
+            setIsLoading(false);
+            Alert.alert(
+                "Configuration Error",
+                "Unable to connect to the server. Please restart the app or contact support."
+            );
+            return;
+        }
+
         try {
             // Initialize App
             const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -78,17 +96,27 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
             const unsubscribe = onAuthStateChanged(firebaseAuth, (u) => {
                 setUser(u);
                 setIsLoading(false);
+            }, (authError) => {
+                console.error("Auth state error:", authError);
+                setError("Authentication error occurred");
+                setIsLoading(false);
             });
 
             return () => unsubscribe();
-        } catch (e) {
+        } catch (e: any) {
             console.error("Firebase init failed:", e);
+            const errorMsg = e?.message || "Failed to initialize app";
+            setError(errorMsg);
             setIsLoading(false);
+            Alert.alert(
+                "Initialization Error",
+                "Failed to connect to the server. Please try again later."
+            );
         }
     }, []);
 
     return (
-        <FirebaseContext.Provider value={{ app, auth, db, functions, user, isLoading }}>
+        <FirebaseContext.Provider value={{ app, auth, db, functions, user, isLoading, error }}>
             {children}
         </FirebaseContext.Provider>
     );

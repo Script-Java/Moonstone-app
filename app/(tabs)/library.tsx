@@ -157,7 +157,7 @@ export default function Library() {
             filtered.map((it) => (
               <Pressable
                 key={it.id}
-                onPress={() => router.push({ pathname: "/(tabs)/sleep", params: { storyId: it.id } })}
+                onPress={() => router.push({ pathname: "/(tabs)/sleep", params: { storyId: it.id, autoPlay: 'true' } })}
                 className="bg-surface rounded-3xl border border-border p-5 flex-row items-center"
               >
                 {/* Visual Placeholder for Story */}
@@ -279,9 +279,18 @@ export default function Library() {
               </Pressable>
               <Pressable
                 onPress={async () => {
-                  if (!selectedStory) return;
-                  await updateDoc(doc(db, "stories", selectedStory.id), { title: editTitle.trim() });
-                  setEditModalVisible(false);
+                  if (!selectedStory || !db || !user) return;
+                  try {
+                    // Update in both collections to maintain consistency
+                    await Promise.all([
+                      updateDoc(doc(db, "stories", selectedStory.id), { title: editTitle.trim() }),
+                      updateDoc(doc(db, "users", user.uid, "library", selectedStory.id), { title: editTitle.trim() })
+                    ]);
+                    setEditModalVisible(false);
+                    setSelectedStory(null);
+                  } catch (err: any) {
+                    Alert.alert("Error", "Failed to rename story. Please try again.");
+                  }
                 }}
                 className="flex-2 bg-primary py-4 px-10 rounded-2xl items-center"
               >
@@ -315,7 +324,7 @@ export default function Library() {
               <Pressable
                 key={s.id}
                 className="py-4 border-b border-white/5"
-                onPress={() => { setSearchModalVisible(false); router.push({ pathname: "/(tabs)/sleep", params: { storyId: s.id } }); }}
+                onPress={() => { setSearchModalVisible(false); router.push({ pathname: "/(tabs)/sleep", params: { storyId: s.id, autoPlay: 'true' } }); }}
               >
                 <Text className="text-white font-bold text-lg">{s.title}</Text>
                 <Text className="text-white/30 text-xs uppercase font-bold">{s.mood}</Text>
@@ -329,7 +338,14 @@ export default function Library() {
 }
 
 // --- Helper Component ---
-function ActionButton({ icon, label, onPress, color = "white" }: any) {
+interface ActionButtonProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  color?: string;
+}
+
+function ActionButton({ icon, label, onPress, color = "white" }: ActionButtonProps) {
   return (
     <Pressable
       onPress={onPress}

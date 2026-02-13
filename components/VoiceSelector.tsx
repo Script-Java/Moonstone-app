@@ -84,19 +84,7 @@ export default function VoiceSelector({
     const audioPlayer = useAudioPlayer(source);
     const audioStatus = useAudioPlayerStatus(audioPlayer);
 
-    // Debug logs
-    useEffect(() => {
-        console.log("🎧 previewUrl changed:", previewUrl);
-    }, [previewUrl]);
 
-    useEffect(() => {
-        console.log("🎧 audio status:", {
-            playing: audioStatus.playing,
-            buffering: audioStatus.isBuffering,
-            duration: audioStatus.duration,
-            currentTime: audioStatus.currentTime,
-        });
-    }, [audioStatus.playing, audioStatus.isBuffering, audioStatus.duration, audioStatus.currentTime]);
 
     // Auto-play when player is ready (triggered by user click via shouldPlayPreview)
     useEffect(() => {
